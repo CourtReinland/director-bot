@@ -487,6 +487,16 @@ def decide_history(project_id: int) -> None:
         )
 
 
+@decide_app.command("agreement")
+def decide_agreement(project_id: int) -> None:
+    """Measure whether later auto-decisions honor human overrides."""
+    from director_bot.decisions.agreement import agreement_metrics
+
+    db = _db()
+    report = agreement_metrics(db, project_id)
+    typer.echo(json.dumps(report, indent=2))
+
+
 @decide_app.command("override")
 def decide_override(
     project_id: int,

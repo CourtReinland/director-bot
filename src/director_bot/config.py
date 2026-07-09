@@ -20,12 +20,6 @@ def soul_static_dir() -> Path:
     return _PKG_ROOT / "soul" / "static"
 
 
-# Back-compat alias (resolved at access time via property-like use in callers).
-@property  # type: ignore[misc]
-def _soul_static_dir_deprecated() -> Path:
-    return soul_static_dir()
-
-
 # Prefer soul_static_dir() at call sites. Constant kept for older imports.
 SOUL_STATIC_DIR = soul_static_dir()
 
