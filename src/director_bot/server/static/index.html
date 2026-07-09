@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Director-bot</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Director-bot</h1>
+    <p class="sub" id="health">loading…</p>
+  </header>
+
+  <nav>
+    <button data-tab="projects" class="active">Projects</button>
+    <button data-tab="canon">Canon</button>
+    <button data-tab="decide">Decide</button>
+    <button data-tab="arc">Series Arc</button>
+  </nav>
+
+  <main>
+    <section id="tab-projects" class="tab active">
+      <div class="row">
+        <div class="col">
+          <h2>Projects</h2>
+          <ul id="project-list" class="list"></ul>
+        </div>
+        <div class="col wide">
+          <h2 id="project-title">Select a project</h2>
+          <div id="project-meta" class="muted"></div>
+          <h3>Board</h3>
+          <div id="cards" class="cards"></div>
+          <h3>Decision chain</h3>
+          <div id="chain-status" class="muted"></div>
+          <ol id="decisions" class="list"></ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-canon" class="tab">
+      <h2>Canon lookup</h2>
+      <div class="toolbar">
+        <input id="lookup-q" type="search" placeholder="situation: interrogation silence…" />
+        <select id="lookup-kind">
+          <option value="digest">digests</option>
+          <option value="moment">moments</option>
+          <option value="card">cards</option>
+        </select>
+        <button id="lookup-btn">Search</button>
+      </div>
+      <ul id="lookup-results" class="list"></ul>
+      <h3>Works</h3>
+      <ul id="works-list" class="list"></ul>
+    </section>
+
+    <section id="tab-decide" class="tab">
+      <h2>Run decision</h2>
+      <label>Project id (optional) <input id="decide-project" type="number" min="1" /></label>
+      <label>Genre <input id="decide-genre" type="text" placeholder="thriller" /></label>
+      <label>Phase
+        <select id="decide-phase">
+          <option>shotlist</option>
+          <option>break_story</option>
+          <option>write</option>
+          <option>previs</option>
+          <option>dailies</option>
+          <option>cut</option>
+          <option>series_arc</option>
+          <option>intake</option>
+        </select>
+      </label>
+      <label>Situation
+        <textarea id="decide-summary" rows="4" placeholder="What is the director facing?"></textarea>
+      </label>
+      <button id="decide-btn">Decide & commit</button>
+      <pre id="decide-out" class="out"></pre>
+    </section>
+
+    <section id="tab-arc" class="tab">
+      <h2>Series arc</h2>
+      <div class="toolbar">
+        <label>Series project id <input id="arc-series" type="number" min="1" /></label>
+        <button id="arc-load">Load arc</button>
+        <label>Episode # <input id="arc-ep" type="number" min="1" value="1" /></label>
+        <button id="arc-plan">Plan episode</button>
+      </div>
+      <pre id="arc-out" class="out"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

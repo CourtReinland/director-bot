@@ -90,6 +90,28 @@ def export_project_handoffs(
     root = Path(out_dir) if out_dir else config.project_dir(str(proj.get("slug")))
     root.mkdir(parents=True, exist_ok=True)
 
+    decision_summaries = [
+        {
+            "id": d.get("id"),
+            "phase": d.get("phase"),
+            "action": d.get("chosen_action"),
+            "method": d.get("equilibrium_method"),
+            "hash": d.get("content_hash"),
+        }
+        for d in decisions
+    ]
+    # Lightweight shot list from decision actions (director intent → STS prompts)
+    shot_list = [
+        {
+            "idx": i,
+            "action_text": str(d.get("chosen_action") or ""),
+            "phase": d.get("phase"),
+            "hash": d.get("content_hash"),
+        }
+        for i, d in enumerate(decisions)
+        if d.get("chosen_action")
+    ]
+
     lw = fountain_handoff_package(
         title=title,
         fountain_text=fountain,
@@ -97,16 +119,26 @@ def export_project_handoffs(
         cast=cast,
         style_bible=str((proj.get("markers") or {}).get("style_bible") or ""),
         decision_hashes=hashes,
+        genre=str(proj.get("genre") or ""),
+        logline=str(proj.get("logline") or ""),
+        frameworks=list((proj.get("markers") or {}).get("frameworks") or []),
+        decision_summaries=decision_summaries,
     )
     lw_path = write_lightwriter_handoff(lw, root / "lightwriter_handoff.json")
 
     man = build_sts_manifest_stub(
         title=title,
         episode=str((proj.get("markers") or {}).get("episode") or "Ep1"),
-        characters=[{"name": n} for n in cast],
+        characters=[{"name": n, "visual_prompt": ""} for n in cast],
         style_ref=str((proj.get("markers") or {}).get("style_ref") or ""),
         notes=str(proj.get("logline") or ""),
         decision_hash=tip,
+        scene_cards=cards,
+        shot_list=shot_list,
+        decision_ledger=decision_summaries,
+        genre=str(proj.get("genre") or ""),
+        logline=str(proj.get("logline") or ""),
+        style_bible=str((proj.get("markers") or {}).get("style_bible") or ""),
     )
     sts_path = write_sts_handoff(man, root / "sts", fountain_text=fountain)
 

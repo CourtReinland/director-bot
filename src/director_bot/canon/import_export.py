@@ -19,6 +19,7 @@ def import_work_bundle(
     bundle: dict[str, Any],
     *,
     replace_children: bool = True,
+    reindex_after: bool = True,
 ) -> int:
     """Import a full work: meta + scene_cards + shot_moments + digests.
 
@@ -68,12 +69,13 @@ def import_work_bundle(
             payload["director"] = directors[0] if directors else ""
         db.add_digest(payload)
 
-    # Keep hybrid retrieval current after every import.
-    try:
-        from director_bot.canon.index import reindex
-        reindex(db)
-    except Exception:
-        pass
+    # Keep hybrid retrieval current after every import (skip in bulk seed).
+    if reindex_after:
+        try:
+            from director_bot.canon.index import reindex
+            reindex(db)
+        except Exception:
+            pass
 
     return work_id
 

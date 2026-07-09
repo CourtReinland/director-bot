@@ -55,17 +55,30 @@ def fountain_handoff_package(
     cast: Optional[list[str]] = None,
     style_bible: str = "",
     decision_hashes: Optional[list[str]] = None,
+    genre: str = "",
+    logline: str = "",
+    frameworks: Optional[list[str]] = None,
+    decision_summaries: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """Package for handoff into writing/production tools."""
+    """Package for handoff into writing/production tools (v2)."""
     return {
-        "format": "director-bot/lightwriter-handoff/v1",
+        "format": "director-bot/lightwriter-handoff/v2",
         "title": title,
+        "genre": genre,
+        "logline": logline,
         "fountain": fountain_text,
         "scene_cards": list(cards or []),
         "cast_lock": list(cast or []),
         "style_bible": style_bible,
+        "frameworks": list(frameworks or []),
         "decision_ledger_tip": (decision_hashes or [None])[-1] if decision_hashes else None,
         "decision_hashes": list(decision_hashes or []),
+        "decision_summaries": list(decision_summaries or []),
+        "import_hints": {
+            "cards": "Import scene_cards into LightWriter Cards view.",
+            "fountain": "Open sibling .fountain or paste fountain field.",
+            "cast_lock": "Apply cast_lock so rewrites cannot invent names.",
+        },
     }
 
 

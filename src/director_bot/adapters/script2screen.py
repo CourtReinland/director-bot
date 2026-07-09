@@ -16,22 +16,41 @@ def build_sts_manifest_stub(
     aspect_ratio: str = "widescreen_16_9",
     notes: str = "",
     decision_hash: str = "",
+    scene_cards: Optional[list[dict[str, Any]]] = None,
+    shot_list: Optional[list[dict[str, Any]]] = None,
+    decision_ledger: Optional[list[dict[str, Any]]] = None,
+    genre: str = "",
+    logline: str = "",
+    style_bible: str = "",
 ) -> dict[str, Any]:
-    """Minimal STS-oriented manifest the director can emit for later import.
+    """STS-oriented handoff manifest (file-based; no STS source edits).
 
-    Script2Screen's full schema may evolve; this stub matches the spirit of
-    LightWriter's STS handoff docs without coupling to STS internals.
+    v2 adds scene_cards, optional shot_list, and a decision_ledger slice so
+    Script2Screen (or a human operator) can prefill wizard steps without
+    re-deriving director intent.
     """
     return {
-        "format": "director-bot/script2screen-handoff/v1",
+        "format": "director-bot/script2screen-handoff/v2",
         "title": title,
         "episode": episode,
+        "genre": genre,
+        "logline": logline,
         "fountain_path": fountain_path,
         "characters": list(characters or []),
         "style_ref": style_ref,
+        "style_bible": style_bible,
         "aspect_ratio": aspect_ratio,
         "notes": notes,
         "director_decision_hash": decision_hash,
+        "scene_cards": list(scene_cards or []),
+        "shot_list": list(shot_list or []),
+        "decision_ledger": list(decision_ledger or []),
+        "wizard_hints": {
+            "step_script": "Use fountain_path or paste fountain sibling.",
+            "step_characters": "characters[] — name + optional visual_prompt.",
+            "step_style": "style_ref / style_bible for global treatment.",
+            "step_prompts": "shot_list[] action_text can seed still/motion prompts.",
+        },
         "provider_hints": {
             "image": None,
             "video": None,

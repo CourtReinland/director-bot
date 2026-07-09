@@ -4,6 +4,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# Load repo/.env (export KEY= or KEY=) without overriding real env.
+try:
+    from director_bot import envload  # noqa: F401
+except Exception:
+    pass
+
 # Soul markdown: prefer env override, then repo-level soul/static (dev),
 # then packaged copy under director_bot/soul/static (installed).
 _PKG_ROOT = Path(__file__).resolve().parent

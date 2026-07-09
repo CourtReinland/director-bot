@@ -13,10 +13,16 @@ brief → soul phases → hybrid canon lookup → decide (ledger) → tool hando
 ```bash
 cd /Users/blue/Projects/director-bot
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,web]"
 
+# Optional: .env in repo root (gitignored). Supports `export KEY=value`.
+#   export DIRECTOR_BOT_PROVIDER=xai
+#   export XAI_API_KEY=...
+
+director-bot doctor        # shows provider + embedder + which env keys exist
 director-bot demo          # seed + project + decide + handoffs
 director-bot short --genre thriller --title "The File" --style "David Fincher"
+director-bot serve         # dashboard http://127.0.0.1:8790/
 director-bot soul meet "pitch me a cold open" --project 1
 director-bot canon lookup "interrogation silence withhold reverse"
 ```
@@ -53,19 +59,20 @@ scripty export-canon 1 -o /tmp/wooded.json \
 director-bot canon import /tmp/wooded.json
 ```
 
-## Live LLM brain (optional)
+## Live LLM brain + embeddings (optional)
 
-Defaults to **mock** offline. Set a provider when keys exist:
+Defaults to **mock** / **hash** offline. Keys from `.env` or the environment:
 
 ```bash
-export DIRECTOR_BOT_PROVIDER=xai          # or anthropic | openai
+export DIRECTOR_BOT_PROVIDER=xai          # or anthropic | openai | mock
 export XAI_API_KEY=...
-# export ANTHROPIC_API_KEY=...
-# export OPENAI_API_KEY=...
-pip install -e ".[anthropic]"             # only needed for Claude
+# export OPENAI_API_KEY=...               # for OpenAI chat and/or embeddings
+# export DIRECTOR_BOT_EMBED_PROVIDER=hash # hash | openai | xai | auto
+pip install -e ".[web,anthropic]"         # dashboard + Claude optional
 ```
 
 When non-mock, `decide` can re-score candidates via the brain before equilibrium.
+xAI does not currently ship a stable public embeddings route; default embedder stays **hash** unless you set `DIRECTOR_BOT_EMBED_PROVIDER=openai` (or try `xai` with `DIRECTOR_BOT_EMBED_TRY_XAI=1`).
 
 ## Soul files
 
@@ -106,4 +113,4 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Status
 
-**v0.2.0** — hybrid retrieval, live brain seam, curation CLI, project cards/series, vertical-slice `short` pipeline, multi-genre seed corpus, handoff export.
+**v0.3.0** — `.env` loader, embedder providers, FastAPI dashboard, series arc/motifs, expanded seed corpus, v2 handoffs, agreement metrics, human overrides.

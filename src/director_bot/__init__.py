@@ -8,4 +8,4 @@ Packages:
   adapters   — thin hooks to scripty / lightwriter / script2screen
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

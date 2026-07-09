@@ -167,6 +167,28 @@ CREATE TABLE IF NOT EXISTS episodes (
     UNIQUE(series_project_id, number)
 );
 
+CREATE TABLE IF NOT EXISTS motifs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_project_id INTEGER NOT NULL REFERENCES projects(id),
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'visual',
+    description TEXT NOT NULL DEFAULT '',
+    first_episode INTEGER,
+    payoff_episode INTEGER,
+    status TEXT NOT NULL DEFAULT 'planted',
+    tags TEXT NOT NULL DEFAULT '[]',
+    meta TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS motif_beats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    motif_id INTEGER NOT NULL REFERENCES motifs(id),
+    episode_number INTEGER NOT NULL,
+    beat TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    meta TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_scene_cards_work ON scene_cards(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_work ON shot_moments(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_scene ON shot_moments(scene_card_id);
@@ -176,6 +198,8 @@ CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id, id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_type ON embeddings(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_project_cards ON project_cards(project_id, idx);
 CREATE INDEX IF NOT EXISTS idx_episodes_series ON episodes(series_project_id, number);
+CREATE INDEX IF NOT EXISTS idx_motifs_series ON motifs(series_project_id);
+CREATE INDEX IF NOT EXISTS idx_motif_beats ON motif_beats(motif_id, episode_number);
 """
 
 _JSON_COLS = {
@@ -189,6 +213,8 @@ _JSON_COLS = {
     "embeddings": {"vector"},
     "project_cards": {"characters", "tags", "meta"},
     "episodes": {"meta"},
+    "motifs": {"tags", "meta"},
+    "motif_beats": {"meta"},
 }
 
 
@@ -838,3 +864,101 @@ class CanonDB:
                 (series_project_id,),
             ).fetchall()
         return self._decode_many("episodes", rows)
+
+    def update_episode(self, series_project_id: int, number: int,
+                       **fields: Any) -> None:
+        allowed = {"title", "logline", "arc_notes", "child_project_id", "meta"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        enc = self._encode("episodes", updates)
+        sets = ", ".join(f"{k}=?" for k in enc)
+        vals = list(enc.values()) + [series_project_id, number]
+        with self._lock:
+            self._conn.execute(
+                f"""UPDATE episodes SET {sets}
+                    WHERE series_project_id = ? AND number = ?""",
+                vals,
+            )
+            self._conn.commit()
+
+    # -- motifs (series arc) ------------------------------------------------- #
+
+    def add_motif(self, series_project_id: int, data: dict[str, Any]) -> int:
+        row = {
+            "series_project_id": series_project_id,
+            "name": data.get("name") or "unnamed",
+            "kind": data.get("kind") or "visual",
+            "description": data.get("description") or "",
+            "first_episode": data.get("first_episode"),
+            "payoff_episode": data.get("payoff_episode"),
+            "status": data.get("status") or "planted",
+            "tags": data.get("tags") or [],
+            "meta": data.get("meta") or {},
+        }
+        enc = self._encode("motifs", row)
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO motifs
+                   (series_project_id, name, kind, description, first_episode,
+                    payoff_episode, status, tags, meta)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (enc["series_project_id"], enc["name"], enc["kind"],
+                 enc["description"], enc["first_episode"], enc["payoff_episode"],
+                 enc["status"], enc["tags"], enc["meta"]),
+            )
+            self._conn.commit()
+            mid = int(cur.lastrowid)
+        self.emit("motif_added", {"id": mid, "series_project_id": series_project_id})
+        return mid
+
+    def motifs_for_series(self, series_project_id: int) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM motifs WHERE series_project_id = ? ORDER BY id",
+                (series_project_id,),
+            ).fetchall()
+        return self._decode_many("motifs", rows)
+
+    def update_motif(self, motif_id: int, **fields: Any) -> None:
+        allowed = {
+            "name", "kind", "description", "first_episode", "payoff_episode",
+            "status", "tags", "meta",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        enc = self._encode("motifs", updates)
+        sets = ", ".join(f"{k}=?" for k in enc)
+        vals = list(enc.values()) + [motif_id]
+        with self._lock:
+            self._conn.execute(f"UPDATE motifs SET {sets} WHERE id = ?", vals)
+            self._conn.commit()
+
+    def add_motif_beat(self, motif_id: int, episode_number: int,
+                       beat: str, notes: str = "") -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO motif_beats
+                   (motif_id, episode_number, beat, notes, meta)
+                   VALUES (?,?,?,?,?)""",
+                (motif_id, episode_number, beat, notes, "{}"),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid)
+
+    def motif_beats(self, motif_id: int) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT * FROM motif_beats WHERE motif_id = ?
+                   ORDER BY episode_number, id""",
+                (motif_id,),
+            ).fetchall()
+        return self._decode_many("motif_beats", rows)
+
+    def get_motif(self, motif_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM motifs WHERE id = ?", (motif_id,)
+            ).fetchone()
+        return self._decode("motifs", row)

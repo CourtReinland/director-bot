@@ -6,7 +6,7 @@ from typing import Any, Optional
 from rapidfuzz import fuzz
 
 from director_bot.canon.db import CanonDB
-from director_bot.canon.embed import cosine, embed_text, hybrid_score
+from director_bot.canon.embed import cosine, get_embedder, hybrid_score
 from director_bot.canon.index import ensure_indexed
 
 
@@ -90,7 +90,7 @@ def lookup_moments(
 ) -> list[dict[str, Any]]:
     """Return top-k shot moments with work metadata and similarity score."""
     ensure_indexed(db) if hybrid else None
-    qvec = embed_text(query) if hybrid else []
+    qvec = get_embedder().embed(query) if hybrid else []
     vmap = _vec_map(db, "moment") if hybrid else {}
 
     allowed_ids: Optional[set[int]] = None
@@ -136,7 +136,7 @@ def lookup_cards(
     hybrid: bool = True,
 ) -> list[dict[str, Any]]:
     ensure_indexed(db) if hybrid else None
-    qvec = embed_text(query) if hybrid else []
+    qvec = get_embedder().embed(query) if hybrid else []
     vmap = _vec_map(db, "card") if hybrid else {}
 
     works_by_id: dict[int, dict] = {}
@@ -175,7 +175,7 @@ def lookup_digests(
     hybrid: bool = True,
 ) -> list[dict[str, Any]]:
     ensure_indexed(db) if hybrid else None
-    qvec = embed_text(query) if hybrid else []
+    qvec = get_embedder().embed(query) if hybrid else []
     vmap = _vec_map(db, "digest") if hybrid else {}
 
     digests = db.list_digests()

@@ -7,6 +7,7 @@ from typing import Optional
 
 import typer
 
+from director_bot import envload as _envload  # noqa: F401 — load .env first
 from director_bot import config
 from director_bot.canon.db import CanonDB
 
@@ -368,6 +369,83 @@ def project_episodes(series_project_id: int) -> None:
         )
 
 
+@project_app.command("motif")
+def project_motif(
+    series_id: int,
+    name: str = typer.Argument(...),
+    kind: str = typer.Option("visual", "--kind"),
+    description: str = typer.Option("", "--description"),
+    first: int = typer.Option(1, "--first"),
+    payoff: Optional[int] = typer.Option(None, "--payoff"),
+) -> None:
+    """Add a series motif (plant/payoff tracking)."""
+    from director_bot.project.arc import add_motif
+
+    db = _db()
+    mid = add_motif(
+        db, series_id, name=name, kind=kind, description=description,
+        first_episode=first, payoff_episode=payoff,
+    )
+    typer.echo(f"motif {mid}: {name} ({kind})")
+
+
+@project_app.command("motif-beat")
+def project_motif_beat(
+    motif_id: int,
+    episode: int = typer.Option(..., "--episode"),
+    beat: str = typer.Argument(...),
+    notes: str = typer.Option("", "--notes"),
+    payoff: bool = typer.Option(False, "--payoff"),
+) -> None:
+    """Record a motif beat (or mark payoff)."""
+    from director_bot.project.arc import mark_payoff, record_beat
+
+    db = _db()
+    if db.get_motif(motif_id) is None:
+        raise _fail(f"no motif {motif_id}")
+    if payoff:
+        mark_payoff(db, motif_id, episode, notes=notes or beat)
+        typer.echo(f"motif {motif_id} paid off in ep{episode}")
+    else:
+        bid = record_beat(db, motif_id, episode, beat, notes=notes)
+        typer.echo(f"beat {bid} on motif {motif_id} ep{episode}")
+
+
+@project_app.command("arc")
+def project_arc(series_id: int) -> None:
+    """Print series arc report (episodes + motifs + open loops)."""
+    from director_bot.project.arc import arc_report
+
+    db = _db()
+    typer.echo(json.dumps(arc_report(db, series_id), indent=2, default=str))
+
+
+@project_app.command("plan-ep")
+def project_plan_ep(
+    series_id: int,
+    episode: int = typer.Argument(..., help="Episode number"),
+    hint: str = typer.Option("", "--hint"),
+    apply: bool = typer.Option(
+        False, "--apply",
+        help="Write suggested cards onto the episode child project"),
+) -> None:
+    """Plan one episode's spine from open motifs."""
+    from director_bot.project.arc import apply_plan_cards, plan_episode_spine
+
+    db = _db()
+    plan = plan_episode_spine(db, series_id, episode, logline_hint=hint)
+    if apply:
+        eps = db.episodes_for_series(series_id)
+        ep = next((e for e in eps if int(e.get("number", -1)) == episode), None)
+        child = ep and ep.get("child_project_id")
+        if not child:
+            raise _fail("episode has no child_project_id — create series with project series")
+        ids = apply_plan_cards(db, int(child), plan, replace=True)
+        plan["applied_card_ids"] = ids
+        plan["child_project_id"] = child
+    typer.echo(json.dumps(plan, indent=2, default=str))
+
+
 @project_app.command("list")
 def project_list() -> None:
     db = _db()
@@ -643,6 +721,22 @@ def demo() -> None:
                f"{pid}")
 
 
+@app.command("serve")
+def serve(
+    port: int = typer.Option(8790, "--port"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+) -> None:
+    """Start the local dashboard (requires pip install -e '.[web]')."""
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise _fail("uvicorn missing — pip install -e '.[web]'") from exc
+    from director_bot.server.app import create_app
+
+    typer.echo(f"dashboard http://{host}:{port}/")
+    uvicorn.run(create_app(), host=host, port=port)
+
+
 @app.command("short")
 def short_pipeline(
     title: str = typer.Option("Untitled Short", "--title"),
@@ -696,10 +790,16 @@ def doctor() -> None:
     typer.echo(f"provider={config.default_provider()}")
     db = _db()
     n_emb = len(db.embeddings_of_type("digest")) + len(db.embeddings_of_type("moment"))
+    from director_bot.canon.embed import get_embedder
+    emb = get_embedder()
     typer.echo(
         f"works={len(db.list_works())} projects={len(db.list_projects())} "
-        f"embedding_rows≈{n_emb}"
+        f"embedding_rows≈{n_emb} embedder={emb.name}"
     )
+    # Show which key names are present without values
+    keys = [k for k in ("XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                        "DIRECTOR_BOT_PROVIDER") if __import__("os").environ.get(k)]
+    typer.echo(f"env_keys_present={keys}")
 
 
 def main() -> None:

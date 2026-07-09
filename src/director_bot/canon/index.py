@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from director_bot.canon.db import CanonDB
-from director_bot.canon.embed import embed_text
+from director_bot.canon.embed import get_embedder
 
 
 def _digest_blob(d: dict) -> str:
@@ -43,28 +43,60 @@ def _card_blob(c: dict) -> str:
     return " | ".join(str(p) for p in parts if p)
 
 
-def reindex(db: CanonDB) -> dict[str, int]:
+def reindex(db: CanonDB, *, batch_size: int = 32) -> dict[str, int | str]:
     """Recompute embeddings for digests, moments, and scene cards."""
-    counts = {"digest": 0, "moment": 0, "card": 0}
+    emb = get_embedder()
+    counts: dict[str, int | str] = {
+        "digest": 0, "moment": 0, "card": 0, "provider": emb.name,
+    }
+
+    def _flush(entity_type: str, batch: list[tuple[int, str]]) -> None:
+        if not batch:
+            return
+        vectors = emb.embed_many([b for _, b in batch])
+        for (eid, blob), vec in zip(batch, vectors):
+            db.upsert_embedding(entity_type, eid, blob, vec)
+
+    batch: list[tuple[int, str]] = []
     for d in db.list_digests():
         if d.get("id") is None:
             continue
-        blob = _digest_blob(d)
-        db.upsert_embedding("digest", int(d["id"]), blob, embed_text(blob))
-        counts["digest"] += 1
+        batch.append((int(d["id"]), _digest_blob(d)))
+        if len(batch) >= batch_size:
+            _flush("digest", batch)
+            counts["digest"] = int(counts["digest"]) + len(batch)
+            batch = []
+    if batch:
+        counts["digest"] = int(counts["digest"]) + len(batch)
+        _flush("digest", batch)
+        batch = []
+
     for m in db.all_shot_moments():
         if m.get("id") is None:
             continue
-        blob = _moment_blob(m)
-        db.upsert_embedding("moment", int(m["id"]), blob, embed_text(blob))
-        counts["moment"] += 1
+        batch.append((int(m["id"]), _moment_blob(m)))
+        if len(batch) >= batch_size:
+            _flush("moment", batch)
+            counts["moment"] = int(counts["moment"]) + len(batch)
+            batch = []
+    if batch:
+        counts["moment"] = int(counts["moment"]) + len(batch)
+        _flush("moment", batch)
+        batch = []
+
     for c in db.all_scene_cards():
         if c.get("id") is None:
             continue
-        blob = _card_blob(c)
-        db.upsert_embedding("card", int(c["id"]), blob, embed_text(blob))
-        counts["card"] += 1
-    db.emit("embeddings_reindexed", counts)
+        batch.append((int(c["id"]), _card_blob(c)))
+        if len(batch) >= batch_size:
+            _flush("card", batch)
+            counts["card"] = int(counts["card"]) + len(batch)
+            batch = []
+    if batch:
+        counts["card"] = int(counts["card"]) + len(batch)
+        _flush("card", batch)
+
+    db.emit("embeddings_reindexed", dict(counts))
     return counts
 
 
