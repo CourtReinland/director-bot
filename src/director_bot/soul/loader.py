@@ -35,7 +35,7 @@ def load_soul(
     soul_dir: Optional[Path | str] = None,
     name: str = "Director",
 ) -> SoulBlueprint:
-    root = Path(soul_dir) if soul_dir else config.SOUL_STATIC_DIR
+    root = Path(soul_dir) if soul_dir else config.soul_static_dir()
     core_p = root / "core.md"
     taste_p = root / "taste.md"
     process_p = root / "process_notes.md"

@@ -27,7 +27,7 @@ dbot = "director_bot.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-director_bot = ["py.typed"]
+director_bot = ["py.typed", "soul/static/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

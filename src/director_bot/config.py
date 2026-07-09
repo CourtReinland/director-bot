@@ -4,11 +4,30 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Soul markdown lives next to the repo (editable without reinstall).
+# Soul markdown: prefer env override, then repo-level soul/static (dev),
+# then packaged copy under director_bot/soul/static (installed).
+_PKG_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-SOUL_STATIC_DIR = Path(
-    os.environ.get("DIRECTOR_BOT_SOUL_DIR", str(_REPO_ROOT / "soul" / "static"))
-)
+
+
+def soul_static_dir() -> Path:
+    env = os.environ.get("DIRECTOR_BOT_SOUL_DIR", "").strip()
+    if env:
+        return Path(env).expanduser()
+    repo = _REPO_ROOT / "soul" / "static"
+    if repo.is_dir() and (repo / "core.md").is_file():
+        return repo
+    return _PKG_ROOT / "soul" / "static"
+
+
+# Back-compat alias (resolved at access time via property-like use in callers).
+@property  # type: ignore[misc]
+def _soul_static_dir_deprecated() -> Path:
+    return soul_static_dir()
+
+
+# Prefer soul_static_dir() at call sites. Constant kept for older imports.
+SOUL_STATIC_DIR = soul_static_dir()
 
 
 def home() -> Path:

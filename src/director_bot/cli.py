@@ -487,6 +487,43 @@ def decide_history(project_id: int) -> None:
         )
 
 
+@decide_app.command("override")
+def decide_override(
+    project_id: int,
+    action: str = typer.Argument(..., help="The human-chosen action / coverage"),
+    situation: str = typer.Option("", "--situation"),
+    rationale: str = typer.Option("", "--rationale"),
+    mint_digest: bool = typer.Option(
+        False, "--mint-digest",
+        help="Also add a DecisionDigest so future lookups can learn"),
+    work_id: Optional[int] = typer.Option(None, "--work"),
+    director: str = typer.Option("human", "--director"),
+) -> None:
+    """Record a human override on the merkle ledger (optionally mint digest)."""
+    from director_bot.decisions.override import human_override
+    from director_bot.decisions.ledger import verify_chain
+
+    db = _db()
+    try:
+        result = human_override(
+            db,
+            project_id=project_id,
+            action=action,
+            situation=situation,
+            rationale=rationale,
+            mint_digest=mint_digest,
+            work_id=work_id,
+            director=director,
+        )
+    except ValueError as exc:
+        raise _fail(str(exc))
+    rec = result["decision"]
+    typer.echo(f"override committed id={rec.id} hash={rec.content_hash[:16]}…")
+    if result.get("digest_id") is not None:
+        typer.echo(f"minted digest {result['digest_id']}")
+    typer.echo(json.dumps(verify_chain(db, project_id), indent=2))
+
+
 # --------------------------------------------------------------------------- #
 # soul
 # --------------------------------------------------------------------------- #
@@ -644,7 +681,8 @@ def doctor() -> None:
     typer.echo(f"version={__version__}")
     typer.echo(f"DIRECTOR_BOT_HOME={config.home()}")
     typer.echo(f"db={db_p} exists={db_p.is_file()}")
-    typer.echo(f"soul_dir={config.SOUL_STATIC_DIR} exists={config.SOUL_STATIC_DIR.is_dir()}")
+    soul_dir = config.soul_static_dir()
+    typer.echo(f"soul_dir={soul_dir} exists={soul_dir.is_dir()}")
     typer.echo(f"provider={config.default_provider()}")
     db = _db()
     n_emb = len(db.embeddings_of_type("digest")) + len(db.embeddings_of_type("moment"))
