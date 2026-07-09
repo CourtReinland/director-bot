@@ -20,6 +20,13 @@ from director_bot.decisions.equilibrium import (
 )
 from director_bot.decisions.ledger import commit_decision
 
+# TextBrain is a Protocol — imported only for typing; runtime uses lazy imports
+# to avoid circular import: engine → soul → steps → engine.
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from director_bot.soul.brain import TextBrain
+
 
 def _phase_value(phase: ProjectPhase | str) -> str:
     return phase.value if isinstance(phase, ProjectPhase) else str(phase)
@@ -62,20 +69,35 @@ def propose_candidates(
     """Build historical + creative candidates from canon retrieval."""
     query = situation.blob()
     genre = situation.genre or None
-    digests = lookup_digests(db, query, k=k)
+    digests = lookup_digests(db, query, k=max(k, 8))
+    # Prefer digests whose director matches style_refs
+    refs = [r.lower() for r in (situation.style_refs or [])]
+    if refs:
+        digests = sorted(
+            digests,
+            key=lambda d: (
+                0 if any(r in str(d.get("director") or "").lower() for r in refs)
+                else 1,
+                -float(d.get("score") or 0),
+            ),
+        )
     moments = lookup_moments(db, query, k=max(2, k // 2), genre=genre, tier="S")
 
     candidates: list[CandidateAction] = []
-    for i, dig in enumerate(digests):
+    for i, dig in enumerate(digests[:k]):
         director = dig.get("director") or "unknown"
         action = str(dig.get("decision") or "").strip()
         if not action:
             continue
+        # Boost style-matched historical options
+        rank = i
+        if refs and any(r in director.lower() for r in refs):
+            rank = max(0, i - 2)
         candidates.append(CandidateAction(
             id=f"hist-digest-{dig.get('id', i)}",
             action=action,
             style_source=f"historical:{director}",
-            scores=_hist_scores(i),
+            scores=_hist_scores(rank),
             evidence_ids=[int(dig["id"])] if dig.get("id") is not None else [],
             notes=str(dig.get("rationale") or ""),
         ))
@@ -122,6 +144,57 @@ def propose_candidates(
     return unique
 
 
+def _apply_brain_scores(
+    pool: list[CandidateAction],
+    brain: Any,
+    situation_blob: str,
+) -> list[CandidateAction]:
+    """Merge optional LLM criterion scores into candidates (by id)."""
+    from director_bot.soul.brain import score_candidates_with_brain
+
+    payload = [
+        {"id": c.id, "action": c.action, "style_source": c.style_source}
+        for c in pool
+    ]
+    scored = score_candidates_with_brain(brain, situation_blob, payload)
+    if not scored:
+        return pool
+    by_id = {str(s.get("id")): s for s in scored if s.get("id") is not None}
+    out: list[CandidateAction] = []
+    for c in pool:
+        hit = by_id.get(c.id)
+        if not hit:
+            out.append(c)
+            continue
+        raw_scores = hit.get("scores") or {}
+        if not isinstance(raw_scores, dict):
+            out.append(c)
+            continue
+        try:
+            merged = CriteriaScores.from_dict({
+                k: float(raw_scores.get(k, getattr(c.scores, k)))
+                for k in (
+                    "genre_craft", "style_match", "continuity",
+                    "originality", "feasibility", "emotion",
+                )
+            })
+        except (TypeError, ValueError):
+            out.append(c)
+            continue
+        notes = c.notes
+        if hit.get("notes"):
+            notes = f"{notes} | llm: {hit['notes']}".strip(" |")
+        out.append(CandidateAction(
+            id=c.id,
+            action=c.action,
+            style_source=c.style_source,
+            scores=merged,
+            evidence_ids=list(c.evidence_ids),
+            notes=notes,
+        ))
+    return out
+
+
 def decide(
     db: CanonDB,
     situation: SituationContext,
@@ -131,8 +204,12 @@ def decide(
     weights: Optional[dict[str, float]] = None,
     commit: bool = True,
     k: int = 5,
+    brain: Any = None,
+    use_brain_scores: bool = True,
 ) -> dict[str, Any]:
     """Full decision pass. Returns candidates, chosen, optional ledger record."""
+    from director_bot.soul.brain import get_brain
+
     phase = _phase_value(situation.phase)
     alpha = (
         creativity_alpha
@@ -140,6 +217,7 @@ def decide(
         else PHASE_CREATIVITY.get(phase, 0.3)
     )
     w = weights or DEFAULT_CRITERIA_WEIGHTS
+    situation_blob = situation.blob()
 
     raw = propose_candidates(db, situation, k=k)
     if len(raw) < 1:
@@ -163,14 +241,19 @@ def decide(
         best_hist = max(historical, key=lambda c: score_candidate(c.scores, w))
         pool.append(blend_creativity(best_hist, creative, alpha, weights=w))
 
+    active_brain = brain or get_brain()
+    if use_brain_scores and active_brain.name != "mock":
+        pool = _apply_brain_scores(pool, active_brain, situation_blob)
+
     chosen, report = pick_equilibrium(pool, weights=w)
+    report["brain"] = active_brain.name
     record: Optional[DecisionRecord] = None
     if commit:
         record = commit_decision(
             db,
             project_id=project_id,
             phase=phase,
-            situation=situation.blob(),
+            situation=situation_blob,
             candidates=pool,
             chosen=chosen,
             equilibrium_method=report["method"],
@@ -181,10 +264,11 @@ def decide(
 
     return {
         "phase": phase,
-        "situation": situation.blob(),
+        "situation": situation_blob,
         "creativity_alpha": alpha,
         "candidates": pool,
         "chosen": chosen,
         "equilibrium": report,
         "decision": record,
+        "brain": active_brain.name,
     }

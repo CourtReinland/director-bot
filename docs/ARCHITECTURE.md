@@ -1,88 +1,77 @@
-# Director-bot Architecture
+# Director-bot Architecture (v0.2)
 
-Embodied AI film director: **canon** (S-tier decision corpus) + **soul** (personality & process) + **decisions** (multi-criteria equilibrium + merkle ledger) + **adapters** (scripty / lightwriter / script2screen).
+Embodied AI film director: **canon** + **soul** + **decisions** + **adapters** + **project workspace**.
 
 ## Layout
 
 ```
 director-bot/
-├── soul/static/          # hot-editable personality (core, taste, process)
+├── soul/static/                 # hot-editable personality
 ├── src/director_bot/
-│   ├── contracts/        # shared schemas (SceneCard, Work, DecisionRecord, …)
-│   ├── canon/            # SQLite corpus + query + seed
-│   ├── soul/             # WorkingMemory, MentalProcesses, cognitive steps
-│   ├── decisions/        # equilibrium + merkle ledger + decide()
-│   ├── adapters/         # thin file-based tool hooks
+│   ├── contracts/               # shared schemas
+│   ├── canon/                   # SQLite corpus, hybrid query, embed, seed
+│   ├── soul/                    # WorkingMemory, processes, brain providers
+│   ├── decisions/               # equilibrium + merkle ledger + decide()
+│   ├── project/                 # cards, series, handoffs
+│   ├── adapters/                # scripty / lightwriter / script2screen
+│   ├── pipeline.py              # vertical-slice short orchestration
 │   ├── config.py
 │   └── cli.py
-├── tests/
-└── docs/
+└── tests/
 ```
 
 ## Data flow
 
 ```
-Scripty (label film)
-    │ export-canon JSON
-    ▼
-Canon DB  ◄── hand seed / LightWriter cards
-    │ retrieve digests & moments
-    ▼
-Director soul (phase FSM)
-    │ propose candidates + α creativity blend
-    ▼
-Equilibrium (weighted Pareto)
-    │ commit
-    ▼
-Merkle decision ledger
-    │ handoff packages
-    ▼
-LightWriter / Script2Screen (later)
+Scripty export-canon JSON ──┐
+Hand seed / curated digests ┼─► Canon DB + hashed embeddings
+LightWriter cards JSON ─────┘         │
+                                      ▼ hybrid lookup
+Director soul (phase FSM) ──► propose → (optional LLM score) → equilibrium
+                                      │
+                                      ▼ merkle commit
+Project workspace ──► LightWriter handoff + STS handoff packages
 ```
 
-## Contracts
+## Hybrid retrieval
 
-- **Work** — film/episode with tier, genre, directors, theme, logline
-- **SceneCard** — LightWriter-aligned: what happens, relationship delta, plot function, beat
-- **ShotMoment** — Scripty-aligned labels + dialogue
-- **DecisionDigest** — historical "in situation X, chose Y because Z"
-- **DecisionRecord** — live project choice with `parent_hash` + `content_hash`
+1. **rapidfuzz** token-set ratio on text blobs  
+2. **Hashed n-gram embeddings** (384-d, pure Python, L2-normalized)  
+3. **hybrid_score** = 0.45·fuzz + 0.55·((cos+1)/2)  
 
-## Soul (OpenSouls-inspired, not forked)
-
-| Concept | Implementation |
-|---------|----------------|
-| Static memories | `soul/static/*.md` |
-| WorkingMemory | append-only entries, persisted on project |
-| MentalProcesses | `ProcessMachine` over `ProjectPhase` |
-| cognitiveSteps | `run_cognitive_cycle` → perceive → decide → remember |
-| TextBrain | Protocol + `MockBrain` offline twin |
+`canon reindex` rebuilds the `embeddings` table. Import/seed auto-reindex.
 
 ## Decision engine
 
-1. Embed situation as text blob (v1: rapidfuzz retrieval; swap for vectors later)
-2. Propose historical candidates from digests/moments + one creative candidate
-3. Optional hybrid via `blend_creativity(α)`
-4. `pick_equilibrium` — criterion floor → Pareto front → weighted score
-5. `commit_decision` — hash chain on `decisions` table
+Criteria players: genre_craft, style_match, continuity, originality, feasibility, emotion.
 
-Criteria: `genre_craft`, `style_match`, `continuity`, `originality`, `feasibility`, `emotion`.
+1. Retrieve digests + moments  
+2. Propose historical candidates + creative candidate  
+3. Blend with phase α  
+4. Optional brain re-score (skipped for mock)  
+5. Floor → Pareto → weighted pick  
+6. Merkle `parent_hash` / `content_hash` commit  
 
-## Adapters
+## Soul
 
-File-based only. No edits to LightWriter or Script2Screen required.
+| OpenSouls concept | Here |
+|-------------------|------|
+| staticMemories | `soul/static/*.md` |
+| WorkingMemory | append-only, persisted on project |
+| MentalProcesses | `ProcessMachine` over `ProjectPhase` |
+| cognitiveSteps | `run_cognitive_cycle` |
+| TextBrain | mock / anthropic / openai / xai |
 
-- `scripty` — pass rows / export-canon JSON → work bundle
-- `lightwriter` — cards JSON + fountain handoff package
-- `script2screen` — STS handoff stub manifest
+## Project workspace
+
+- `project_cards` — live board (LightWriter-compatible fields)  
+- `episodes` — series → child projects  
+- `export_project_handoffs` — fountain + LW package + STS stub  
 
 ## Storage
 
-`$DIRECTOR_BOT_HOME` (default `~/.director-bot`):
-
-- `director.db` — works, cards, shots, digests, projects, decisions, events
-- `projects/<slug>/` — workspace files
+`$DIRECTOR_BOT_HOME/director.db` tables: works, scene_cards, shot_moments, decision_digests, embeddings, projects, project_cards, episodes, decisions, events.
 
 ## Offline-first
 
-All tests run without API keys. Provider selection defaults to `mock` unless credentials resolve.
+All tests pass with `DIRECTOR_BOT_PROVIDER=mock` and no API keys.

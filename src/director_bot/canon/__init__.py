@@ -3,6 +3,7 @@
 from director_bot.canon.db import CanonDB
 from director_bot.canon.query import lookup_moments, lookup_digests, filter_works
 from director_bot.canon.import_export import import_work_bundle, export_work_bundle
+from director_bot.canon.index import reindex, ensure_indexed
 
 __all__ = [
     "CanonDB",
@@ -11,4 +12,6 @@ __all__ = [
     "filter_works",
     "import_work_bundle",
     "export_work_bundle",
+    "reindex",
+    "ensure_indexed",
 ]

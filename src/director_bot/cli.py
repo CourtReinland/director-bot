@@ -40,7 +40,7 @@ def _fail(msg: str) -> typer.Exit:
 
 @canon_app.command("seed")
 def canon_seed() -> None:
-    """Load the built-in S-tier pocket corpus (thriller + drama micro-scenes)."""
+    """Load the built-in multi-genre pocket corpus and reindex embeddings."""
     from director_bot.canon.seed import seed_demo_canon
 
     db = _db()
@@ -71,6 +71,120 @@ def canon_import(
         raise _fail(str(exc))
     work = db.get_work(wid)
     typer.echo(f"imported work {wid}: {work and work.get('title')}")
+
+
+@canon_app.command("import-dir")
+def canon_import_dir(
+    directory: Path = typer.Argument(..., help="Directory of *.json bundles"),
+) -> None:
+    """Bulk-import all JSON work bundles in a directory."""
+    from director_bot.adapters.scripty import import_scripty_bundle_file
+    from director_bot.canon.import_export import import_bundle_file
+
+    d = directory.expanduser().resolve()
+    if not d.is_dir():
+        raise _fail(f"not a directory: {d}")
+    db = _db()
+    paths = sorted(d.glob("*.json"))
+    if not paths:
+        raise _fail(f"no .json files in {d}")
+    for p in paths:
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            if "project" in raw and "pass" in raw:
+                wid = import_scripty_bundle_file(db, p)
+            else:
+                wid = import_bundle_file(db, p)
+            work = db.get_work(wid)
+            typer.echo(f"  {p.name} → work {wid} ({work and work.get('title')})")
+        except Exception as exc:
+            typer.echo(f"  {p.name} FAIL: {exc}", err=True)
+    typer.echo(f"done ({len(paths)} files)")
+
+
+@canon_app.command("tier")
+def canon_tier(
+    work_id: int,
+    tier: str = typer.Argument(..., help="S|A|B|C|UNRANKED"),
+) -> None:
+    """Set a work's tier ranking."""
+    tier_u = tier.strip().upper()
+    if tier_u not in ("S", "A", "B", "C", "UNRANKED"):
+        raise _fail("tier must be S|A|B|C|UNRANKED")
+    db = _db()
+    if db.get_work(work_id) is None:
+        raise _fail(f"no work {work_id}")
+    db.update_work(work_id, tier=tier_u)
+    typer.echo(f"work {work_id} tier → {tier_u}")
+
+
+@canon_app.command("annotate")
+def canon_annotate(
+    work_id: int,
+    theme: Optional[str] = typer.Option(None, "--theme"),
+    logline: Optional[str] = typer.Option(None, "--logline"),
+    plot_summary: Optional[str] = typer.Option(None, "--plot-summary"),
+    director: Optional[list[str]] = typer.Option(None, "--director"),
+    genre: Optional[list[str]] = typer.Option(None, "--genre"),
+) -> None:
+    """Patch high-level work metadata (theme, directors, genres, …)."""
+    db = _db()
+    work = db.get_work(work_id)
+    if work is None:
+        raise _fail(f"no work {work_id}")
+    fields: dict = {}
+    if theme is not None:
+        fields["theme"] = theme
+    if logline is not None:
+        fields["logline"] = logline
+    if plot_summary is not None:
+        fields["plot_summary"] = plot_summary
+    if director is not None:
+        fields["directors"] = list(director)
+    if genre is not None:
+        fields["genres"] = list(genre)
+    if not fields:
+        raise _fail("nothing to update — pass --theme/--logline/…")
+    db.update_work(work_id, **fields)
+    typer.echo(f"updated work {work_id}: {', '.join(fields)}")
+
+
+@canon_app.command("digest")
+def canon_digest(
+    work_id: int,
+    situation: str = typer.Option(..., "--situation"),
+    decision: str = typer.Option(..., "--decision"),
+    rationale: str = typer.Option("", "--rationale"),
+    director: str = typer.Option("", "--director"),
+    phase: str = typer.Option("shotlist", "--phase"),
+    tag: Optional[list[str]] = typer.Option(None, "--tag"),
+) -> None:
+    """Add a hand-authored decision digest to a work."""
+    from director_bot.canon.index import reindex
+
+    db = _db()
+    if db.get_work(work_id) is None:
+        raise _fail(f"no work {work_id}")
+    did = db.add_digest({
+        "work_id": work_id,
+        "situation": situation,
+        "decision": decision,
+        "rationale": rationale,
+        "director": director,
+        "phase": phase,
+        "tags": list(tag or []),
+    })
+    reindex(db)
+    typer.echo(f"digest {did} on work {work_id}")
+
+
+@canon_app.command("reindex")
+def canon_reindex() -> None:
+    """Rebuild hashed embedding index for hybrid lookup."""
+    from director_bot.canon.index import reindex
+
+    counts = reindex(_db())
+    typer.echo(f"reindexed: {counts}")
 
 
 @canon_app.command("export")
@@ -154,12 +268,104 @@ def project_create(
     genre: str = typer.Option("", "--genre"),
     logline: str = typer.Option("", "--logline"),
     slug: Optional[str] = typer.Option(None, "--slug"),
+    medium: str = typer.Option("film", "--medium", help="film|series|episode|short"),
 ) -> None:
     """Create a live production project."""
     db = _db()
-    pid = db.create_project(title, slug=slug, genre=genre, logline=logline)
+    pid = db.create_project(
+        title, slug=slug, genre=genre, logline=logline, medium=medium,
+    )
     proj = db.get_project(pid)
-    typer.echo(f"created project {pid} ({proj and proj.get('slug')}) phase=intake")
+    typer.echo(
+        f"created project {pid} ({proj and proj.get('slug')}) "
+        f"phase=intake medium={medium}"
+    )
+
+
+@project_app.command("series")
+def project_series(
+    title: str = typer.Argument(..., help="Series title"),
+    episode: Optional[list[str]] = typer.Option(
+        None, "--episode", "-e", help="Episode title (repeatable)"),
+    genre: str = typer.Option("", "--genre"),
+    logline: str = typer.Option("", "--logline"),
+) -> None:
+    """Create a series project plus child episode projects."""
+    from director_bot.project.workspace import create_series_with_episodes
+
+    eps = list(episode or [])
+    if not eps:
+        eps = [f"{title} — Ep{i}" for i in range(1, 4)]
+    db = _db()
+    result = create_series_with_episodes(
+        db, title, eps, genre=genre, logline=logline,
+    )
+    typer.echo(json.dumps(result, indent=2))
+
+
+@project_app.command("cards-import")
+def project_cards_import(
+    project_id: int,
+    path: Path = typer.Argument(..., help="LightWriter-style cards JSON"),
+) -> None:
+    """Import scene cards into a project board."""
+    from director_bot.project.workspace import import_cards_file
+
+    db = _db()
+    if db.get_project(project_id) is None:
+        raise _fail(f"no project {project_id}")
+    try:
+        ids = import_cards_file(db, project_id, path)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise _fail(str(exc))
+    typer.echo(f"imported {len(ids)} card(s) into project {project_id}")
+
+
+@project_app.command("cards")
+def project_cards_list(project_id: int) -> None:
+    """List scene cards on a project board."""
+    db = _db()
+    cards = db.project_cards(project_id)
+    if not cards:
+        typer.echo("no cards — import with: project cards-import")
+        return
+    for c in cards:
+        typer.echo(
+            f"[{c.get('idx')}] {c.get('slugline') or c.get('title')} — "
+            f"{str(c.get('what_happens') or '')[:70]}"
+        )
+
+
+@project_app.command("export")
+def project_export(
+    project_id: int,
+    out: Optional[Path] = typer.Option(None, "--out", help="Output directory"),
+) -> None:
+    """Export LightWriter + Script2Screen handoff packages."""
+    from director_bot.project.workspace import export_project_handoffs
+
+    db = _db()
+    try:
+        paths = export_project_handoffs(db, project_id, out_dir=out)
+    except ValueError as exc:
+        raise _fail(str(exc))
+    for k, v in paths.items():
+        typer.echo(f"{k}: {v}")
+
+
+@project_app.command("episodes")
+def project_episodes(series_project_id: int) -> None:
+    """List episodes for a series project."""
+    db = _db()
+    rows = db.episodes_for_series(series_project_id)
+    if not rows:
+        typer.echo("no episodes")
+        return
+    for e in rows:
+        typer.echo(
+            f"Ep{e.get('number')}: {e.get('title')}  "
+            f"child_project={e.get('child_project_id')}"
+        )
 
 
 @project_app.command("list")
@@ -337,6 +543,7 @@ def demo() -> None:
     from director_bot.contracts.schemas import ProjectPhase, SituationContext
     from director_bot.decisions.engine import decide
     from director_bot.decisions.ledger import verify_chain
+    from director_bot.project.workspace import export_project_handoffs
     from director_bot.soul.steps import DirectorMind
 
     db = _db()
@@ -346,6 +553,22 @@ def demo() -> None:
         genre="thriller",
         logline="A detective and a suspect trade silence for control.",
     )
+    # board cards
+    db.replace_project_cards(pid, [
+        {
+            "idx": 0,
+            "slugline": "INT. INTERROGATION ROOM - NIGHT",
+            "title": "The file",
+            "what_happens": "Detective and suspect. Silence. Closed file.",
+            "relationship_delta": "Power vacuum.",
+            "plot_function": "Catalyst",
+            "emotional_spine": "Controlled menace",
+            "characters": ["DETECTIVE", "SUSPECT"],
+            "structural_beat": "Catalyst",
+            "act": 1,
+            "tags": ["interrogation"],
+        },
+    ])
     mind = DirectorMind.create(db, project_id=pid)
     # advance to shotlist legally
     for step in ("break_story", "write", "shotlist"):
@@ -362,25 +585,73 @@ def demo() -> None:
     )
     result = decide(db, situation, project_id=pid, commit=True)
     chain = verify_chain(db, pid)
+    paths = export_project_handoffs(db, pid)
     typer.echo(f"seeded works: {ids}")
     typer.echo(f"project: {pid}")
     typer.echo(f"chose: {result['chosen'].action}")
     typer.echo(f"chain ok: {chain.get('ok')} length={chain.get('length')}")
+    typer.echo(f"handoffs: {paths.get('root')}")
     typer.echo(f"db: {config.db_path()}")
     typer.echo("next: director-bot soul meet \"pitch me the opening\" --project "
                f"{pid}")
 
 
+@app.command("short")
+def short_pipeline(
+    title: str = typer.Option("Untitled Short", "--title"),
+    genre: str = typer.Option("thriller", "--genre"),
+    logline: str = typer.Option("", "--logline"),
+    situation: str = typer.Option(
+        "", "--situation",
+        help="Decision situation for shotlist pass"),
+    style: Optional[list[str]] = typer.Option(None, "--style", help="Director style ref"),
+    no_seed: bool = typer.Option(False, "--no-seed"),
+) -> None:
+    """Vertical slice: seed/board/decide/export handoffs for a short."""
+    from director_bot.pipeline import run_short_pipeline
+
+    db = _db()
+    sit = situation or (
+        f"{genre} film. {logline or title}. "
+        f"Opening scene decision: coverage, power, and subtext without wasting cuts."
+    )
+    result = run_short_pipeline(
+        db,
+        title=title,
+        genre=genre,
+        logline=logline or f"A {genre} short: {title}",
+        situation=sit,
+        style_refs=list(style or []),
+        seed=not no_seed,
+    )
+    typer.echo(json.dumps({
+        "project_id": result["project_id"],
+        "cards": result["cards"],
+        "chosen": result["chosen"],
+        "decision_hash": result["decision_hash"],
+        "chain_ok": result["chain"].get("ok"),
+        "handoffs": result["handoffs"],
+        "brain": result["brain"],
+    }, indent=2))
+
+
 @app.command("doctor")
 def doctor() -> None:
     """Print paths and basic health."""
+    from director_bot import __version__
+
     db_p = config.db_path()
+    typer.echo(f"version={__version__}")
     typer.echo(f"DIRECTOR_BOT_HOME={config.home()}")
     typer.echo(f"db={db_p} exists={db_p.is_file()}")
     typer.echo(f"soul_dir={config.SOUL_STATIC_DIR} exists={config.SOUL_STATIC_DIR.is_dir()}")
     typer.echo(f"provider={config.default_provider()}")
     db = _db()
-    typer.echo(f"works={len(db.list_works())} projects={len(db.list_projects())}")
+    n_emb = len(db.embeddings_of_type("digest")) + len(db.embeddings_of_type("moment"))
+    typer.echo(
+        f"works={len(db.list_works())} projects={len(db.list_projects())} "
+        f"embedding_rows≈{n_emb}"
+    )
 
 
 def main() -> None:

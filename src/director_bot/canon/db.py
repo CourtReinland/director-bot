@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS projects (
     phase TEXT NOT NULL DEFAULT 'intake',
     genre TEXT NOT NULL DEFAULT '',
     logline TEXT NOT NULL DEFAULT '',
+    medium TEXT NOT NULL DEFAULT 'film',
+    series_slug TEXT NOT NULL DEFAULT '',
     markers TEXT NOT NULL DEFAULT '{}',
     working_memory TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
@@ -124,12 +126,56 @@ CREATE TABLE IF NOT EXISTS decisions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    text_blob TEXT NOT NULL DEFAULT '',
+    vector TEXT NOT NULL DEFAULT '[]',
+    dim INTEGER NOT NULL DEFAULT 384,
+    updated_at TEXT NOT NULL,
+    UNIQUE(entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    idx INTEGER NOT NULL,
+    slugline TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    what_happens TEXT NOT NULL DEFAULT '',
+    relationship_delta TEXT NOT NULL DEFAULT '',
+    plot_function TEXT NOT NULL DEFAULT '',
+    emotional_spine TEXT NOT NULL DEFAULT '',
+    characters TEXT NOT NULL DEFAULT '[]',
+    structural_beat TEXT NOT NULL DEFAULT '',
+    act INTEGER,
+    page_estimate REAL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    meta TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS episodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_project_id INTEGER NOT NULL REFERENCES projects(id),
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    logline TEXT NOT NULL DEFAULT '',
+    child_project_id INTEGER REFERENCES projects(id),
+    arc_notes TEXT NOT NULL DEFAULT '',
+    meta TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(series_project_id, number)
+);
+
 CREATE INDEX IF NOT EXISTS idx_scene_cards_work ON scene_cards(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_work ON shot_moments(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_scene ON shot_moments(scene_card_id);
 CREATE INDEX IF NOT EXISTS idx_digests_work ON decision_digests(work_id);
 CREATE INDEX IF NOT EXISTS idx_works_tier ON works(tier);
 CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id, id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_type ON embeddings(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_project_cards ON project_cards(project_id, idx);
+CREATE INDEX IF NOT EXISTS idx_episodes_series ON episodes(series_project_id, number);
 """
 
 _JSON_COLS = {
@@ -140,6 +186,9 @@ _JSON_COLS = {
     "projects": {"markers", "working_memory"},
     "decisions": {"candidates", "evidence_ids", "scores"},
     "events": {"payload"},
+    "embeddings": {"vector"},
+    "project_cards": {"characters", "tags", "meta"},
+    "episodes": {"meta"},
 }
 
 
@@ -164,7 +213,23 @@ class CanonDB:
         self._conn.execute("PRAGMA foreign_keys = ON")
         with self._lock:
             self._conn.executescript(SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after v0.1 without breaking old DBs."""
+        cols = {
+            r[1]
+            for r in self._conn.execute("PRAGMA table_info(projects)").fetchall()
+        }
+        if "medium" not in cols:
+            self._conn.execute(
+                "ALTER TABLE projects ADD COLUMN medium TEXT NOT NULL DEFAULT 'film'"
+            )
+        if "series_slug" not in cols:
+            self._conn.execute(
+                "ALTER TABLE projects ADD COLUMN series_slug TEXT NOT NULL DEFAULT ''"
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -453,20 +518,23 @@ class CanonDB:
     # -- projects ------------------------------------------------------------ #
 
     def create_project(self, title: str, slug: Optional[str] = None,
-                       genre: str = "", logline: str = "") -> int:
+                       genre: str = "", logline: str = "",
+                       medium: str = "film",
+                       series_slug: str = "") -> int:
         s = slug or _slugify(title)
         now = _now()
         with self._lock:
             cur = self._conn.execute(
                 """INSERT INTO projects
-                   (slug, title, phase, genre, logline, markers, working_memory,
-                    created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (s, title, "intake", genre, logline, "{}", "[]", now, now),
+                   (slug, title, phase, genre, logline, medium, series_slug,
+                    markers, working_memory, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (s, title, "intake", genre, logline, medium or "film",
+                 series_slug or "", "{}", "[]", now, now),
             )
             self._conn.commit()
             pid = int(cur.lastrowid)
-        self.emit("project_created", {"id": pid, "slug": s})
+        self.emit("project_created", {"id": pid, "slug": s, "medium": medium})
         return pid
 
     def get_project(self, project_id: int) -> Optional[dict]:
@@ -493,6 +561,7 @@ class CanonDB:
     def update_project(self, project_id: int, **fields: Any) -> None:
         allowed = {
             "title", "phase", "genre", "logline", "markers", "working_memory",
+            "medium", "series_slug",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -578,3 +647,194 @@ class CanonDB:
                 "SELECT * FROM decisions WHERE id = ?", (decision_id,)
             ).fetchone()
         return self._decode("decisions", row)
+
+    def update_work(self, work_id: int, **fields: Any) -> None:
+        allowed = {
+            "title", "year", "directors", "genres", "medium", "tier",
+            "theme", "logline", "plot_summary", "source", "meta", "slug",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        enc = self._encode("works", updates)
+        sets = ", ".join(f"{k}=?" for k in enc)
+        vals = list(enc.values()) + [work_id]
+        with self._lock:
+            self._conn.execute(f"UPDATE works SET {sets} WHERE id = ?", vals)
+            self._conn.commit()
+        self.emit("work_patched", {"id": work_id, **{
+            k: updates[k] for k in updates
+        }})
+
+    def update_digest(self, digest_id: int, **fields: Any) -> None:
+        allowed = {
+            "situation", "decision", "rationale", "director", "tags",
+            "phase", "meta", "work_id", "scene_card_id", "shot_moment_id",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        enc = self._encode("decision_digests", updates)
+        sets = ", ".join(f"{k}=?" for k in enc)
+        vals = list(enc.values()) + [digest_id]
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE decision_digests SET {sets} WHERE id = ?", vals
+            )
+            self._conn.commit()
+        self.emit("digest_patched", {"id": digest_id})
+
+    def get_digest(self, digest_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM decision_digests WHERE id = ?", (digest_id,)
+            ).fetchone()
+        return self._decode("decision_digests", row)
+
+    def all_scene_cards(self) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM scene_cards ORDER BY work_id, idx"
+            ).fetchall()
+        return self._decode_many("scene_cards", rows)
+
+    # -- embeddings ---------------------------------------------------------- #
+
+    def upsert_embedding(self, entity_type: str, entity_id: int,
+                         text_blob: str, vector: list[float]) -> None:
+        now = _now()
+        enc_vec = json.dumps(vector)
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO embeddings
+                   (entity_type, entity_id, text_blob, vector, dim, updated_at)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                     text_blob=excluded.text_blob,
+                     vector=excluded.vector,
+                     dim=excluded.dim,
+                     updated_at=excluded.updated_at""",
+                (entity_type, entity_id, text_blob, enc_vec, len(vector), now),
+            )
+            self._conn.commit()
+
+    def embeddings_of_type(self, entity_type: str) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM embeddings WHERE entity_type = ?",
+                (entity_type,),
+            ).fetchall()
+        return self._decode_many("embeddings", rows)
+
+    def clear_embeddings(self, entity_type: Optional[str] = None) -> int:
+        with self._lock:
+            if entity_type:
+                cur = self._conn.execute(
+                    "DELETE FROM embeddings WHERE entity_type = ?",
+                    (entity_type,),
+                )
+            else:
+                cur = self._conn.execute("DELETE FROM embeddings")
+            self._conn.commit()
+            return int(cur.rowcount)
+
+    # -- project cards ------------------------------------------------------- #
+
+    def add_project_card(self, project_id: int, data: dict[str, Any]) -> int:
+        row = {
+            "project_id": project_id,
+            "idx": int(data.get("idx", 0)),
+            "slugline": data.get("slugline") or "",
+            "title": data.get("title") or "",
+            "what_happens": data.get("what_happens") or "",
+            "relationship_delta": data.get("relationship_delta") or "",
+            "plot_function": data.get("plot_function") or "",
+            "emotional_spine": data.get("emotional_spine") or "",
+            "characters": data.get("characters") or [],
+            "structural_beat": data.get("structural_beat") or "",
+            "act": data.get("act"),
+            "page_estimate": data.get("page_estimate"),
+            "tags": data.get("tags") or [],
+            "meta": data.get("meta") or {},
+        }
+        enc = self._encode("project_cards", row)
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO project_cards
+                   (project_id, idx, slugline, title, what_happens,
+                    relationship_delta, plot_function, emotional_spine,
+                    characters, structural_beat, act, page_estimate, tags, meta)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (enc["project_id"], enc["idx"], enc["slugline"], enc["title"],
+                 enc["what_happens"], enc["relationship_delta"],
+                 enc["plot_function"], enc["emotional_spine"], enc["characters"],
+                 enc["structural_beat"], enc["act"], enc["page_estimate"],
+                 enc["tags"], enc["meta"]),
+            )
+            self._conn.commit()
+            cid = int(cur.lastrowid)
+        self.emit("project_card_added", {"id": cid, "project_id": project_id})
+        return cid
+
+    def project_cards(self, project_id: int) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM project_cards WHERE project_id = ? ORDER BY idx",
+                (project_id,),
+            ).fetchall()
+        return self._decode_many("project_cards", rows)
+
+    def clear_project_cards(self, project_id: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM project_cards WHERE project_id = ?", (project_id,)
+            )
+            self._conn.commit()
+
+    def replace_project_cards(self, project_id: int,
+                              cards: list[dict[str, Any]]) -> list[int]:
+        self.clear_project_cards(project_id)
+        return [self.add_project_card(project_id, c) for c in cards]
+
+    # -- episodes (series) --------------------------------------------------- #
+
+    def add_episode(self, series_project_id: int, number: int,
+                    title: str = "", logline: str = "",
+                    arc_notes: str = "",
+                    child_project_id: Optional[int] = None) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO episodes
+                   (series_project_id, number, title, logline, child_project_id,
+                    arc_notes, meta)
+                   VALUES (?,?,?,?,?,?,?)
+                   ON CONFLICT(series_project_id, number) DO UPDATE SET
+                     title=excluded.title,
+                     logline=excluded.logline,
+                     arc_notes=excluded.arc_notes,
+                     child_project_id=COALESCE(excluded.child_project_id,
+                                              episodes.child_project_id)""",
+                (series_project_id, number, title, logline, child_project_id,
+                 arc_notes, "{}"),
+            )
+            self._conn.commit()
+            # fetch id
+            row = self._conn.execute(
+                """SELECT id FROM episodes
+                   WHERE series_project_id = ? AND number = ?""",
+                (series_project_id, number),
+            ).fetchone()
+            eid = int(row["id"] if row else cur.lastrowid)
+        self.emit("episode_upserted", {
+            "id": eid, "series_project_id": series_project_id, "number": number,
+        })
+        return eid
+
+    def episodes_for_series(self, series_project_id: int) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT * FROM episodes WHERE series_project_id = ?
+                   ORDER BY number""",
+                (series_project_id,),
+            ).fetchall()
+        return self._decode_many("episodes", rows)

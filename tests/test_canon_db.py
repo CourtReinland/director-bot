@@ -10,12 +10,14 @@ from director_bot.canon.seed import seed_demo_canon
 def test_seed_and_list(tmp_path: Path):
     db = CanonDB(tmp_path / "t.db")
     ids = seed_demo_canon(db)
-    assert len(ids) == 2
+    assert len(ids) >= 4
     works = db.list_works(tier="S")
-    assert len(works) == 2
+    assert len(works) >= 3
     assert db.scene_cards_for_work(ids[0])
     assert db.shot_moments_for_work(ids[0])
     assert db.list_digests(work_id=ids[0])
+    # embeddings built by seed
+    assert db.embeddings_of_type("digest")
 
 
 def test_import_export_roundtrip(tmp_path: Path):

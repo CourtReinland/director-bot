@@ -68,6 +68,13 @@ def import_work_bundle(
             payload["director"] = directors[0] if directors else ""
         db.add_digest(payload)
 
+    # Keep hybrid retrieval current after every import.
+    try:
+        from director_bot.canon.index import reindex
+        reindex(db)
+    except Exception:
+        pass
+
     return work_id
 
 

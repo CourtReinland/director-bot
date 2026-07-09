@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "director-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Embodied AI film director: canon DB, soul, decision ledger, tool orchestration"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,8 +15,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-# Optional: talk to a local Scripty install for live export
-scripty = []
+anthropic = ["anthropic>=0.40"]
+# OpenAI / xAI use stdlib urllib — no extra dep required
+all = ["anthropic>=0.40"]
 
 [project.scripts]
 director-bot = "director_bot.cli:main"

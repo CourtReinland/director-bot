@@ -1,74 +1,79 @@
 # Director-bot
 
-Embodied AI film director. Uses a **canon** of S-tier labeled films and decision digests, an OpenSouls-inspired **soul** (personality + process FSM), and a **merkle decision ledger** with multi-criteria equilibrium. Orchestrates **Scripty**, **LightWriter**, and **Script2Screen** via thin adapters (those repos stay independent).
+Embodied AI film director. Uses a **canon** of S-tier labeled films and decision digests, an OpenSouls-inspired **soul** (personality + process FSM), hybrid **vector + fuzzy retrieval**, and a **merkle decision ledger** with multi-criteria equilibrium. Orchestrates **Scripty**, **LightWriter**, and **Script2Screen** via thin file-based adapters.
 
 ```
-brief → soul phases → canon lookup → decide (ledger) → tool handoffs → film
+brief → soul phases → hybrid canon lookup → decide (ledger) → tool handoffs → film
 ```
+
+**Repo:** https://github.com/CourtReinland/director-bot  
 
 ## Quick start
 
 ```bash
 cd /Users/blue/Projects/director-bot
-python3.11 -m venv .venv
-source .venv/bin/activate
+python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Fully offline demo: seed canon, create project, one justified decision
-director-bot demo
-
-# Creative meeting (mock brain)
-director-bot soul meet "pitch me a cold open for a two-hander thriller" --project 1
-
-# Lookup what S-tier directors did in a situation
+director-bot demo          # seed + project + decide + handoffs
+director-bot short --genre thriller --title "The File" --style "David Fincher"
+director-bot soul meet "pitch me a cold open" --project 1
 director-bot canon lookup "interrogation silence withhold reverse"
-
-# Explicit decision
-director-bot decide run "Suspect is silent; detective has a closed file" \
-  --project 1 --genre thriller --phase shotlist
 ```
 
 ## CLI map
 
 | Command | Purpose |
 |---------|---------|
-| `director-bot demo` | Seed + project + decide + verify chain |
-| `director-bot doctor` | Paths / health |
-| `director-bot canon seed` | Load pocket S-tier corpus |
-| `director-bot canon import FILE` | Import work bundle or Scripty export |
-| `director-bot canon list` | List works |
-| `director-bot canon lookup QUERY` | Digest/moment/card retrieval |
-| `director-bot project create TITLE` | New production project |
-| `director-bot project phase ID TARGET` | Legal phase transition |
-| `director-bot decide run SUMMARY` | Full decision pass |
-| `director-bot decide chain ID` | Verify merkle chain |
-| `director-bot soul show` | Print soul preamble |
-| `director-bot soul meet MSG` | Talk to the director |
-| `director-bot soul cycle SUMMARY` | Perceive → decide → remember |
+| `demo` | Seed + project + decide + verify + handoffs |
+| `short` | Vertical slice pipeline for a short film |
+| `doctor` | Paths / health / embedding counts |
+| `canon seed` | Multi-genre pocket S/A corpus + reindex |
+| `canon import FILE` | Import work bundle or Scripty export |
+| `canon import-dir DIR` | Bulk import `*.json` |
+| `canon tier ID S` | Set work tier |
+| `canon annotate ID --theme …` | Patch work metadata |
+| `canon digest ID --situation … --decision …` | Hand-authored digest |
+| `canon reindex` | Rebuild hashed embeddings |
+| `canon lookup QUERY` | Hybrid digest/moment/card search |
+| `project create` | New production project |
+| `project series TITLE -e Ep1 -e Ep2` | Series + episode projects |
+| `project cards-import` | LightWriter-style cards → board |
+| `project export` | LightWriter + STS handoff packages |
+| `decide run` / `decide chain` | Decision engine + merkle verify |
+| `soul meet` / `soul cycle` | Embodied creative meeting |
 
-Alias: `dbot` → same entry point.
+Alias: `dbot`.
 
 ## Scripty pipe
 
-From the Scripty repo (after a complete pass):
-
 ```bash
 scripty export-canon 1 -o /tmp/wooded.json \
-  --tier S --director "David Fincher" --genre thriller \
-  --theme "…" --logline "…"
-
+  --tier S --director "David Fincher" --genre thriller
 director-bot canon import /tmp/wooded.json
 ```
 
+## Live LLM brain (optional)
+
+Defaults to **mock** offline. Set a provider when keys exist:
+
+```bash
+export DIRECTOR_BOT_PROVIDER=xai          # or anthropic | openai
+export XAI_API_KEY=...
+# export ANTHROPIC_API_KEY=...
+# export OPENAI_API_KEY=...
+pip install -e ".[anthropic]"             # only needed for Claude
+```
+
+When non-mock, `decide` can re-score candidates via the brain before equilibrium.
+
 ## Soul files
 
-Edit without reinstalling:
-
-- `soul/static/core.md` — identity & non-negotiables  
-- `soul/static/taste.md` — gravity wells & distrusts  
+- `soul/static/core.md` — identity  
+- `soul/static/taste.md` — gravity wells  
 - `soul/static/process_notes.md` — phase discipline  
 
-Override directory with `DIRECTOR_BOT_SOUL_DIR`.
+`DIRECTOR_BOT_SOUL_DIR` overrides the directory.
 
 ## Configuration
 
@@ -77,21 +82,21 @@ Override directory with `DIRECTOR_BOT_SOUL_DIR`.
 | `DIRECTOR_BOT_HOME` | `~/.director-bot` | Data root |
 | `DIRECTOR_BOT_DB` | `$HOME/director.db` | SQLite path |
 | `DIRECTOR_BOT_SOUL_DIR` | repo `soul/static` | Personality markdown |
-| `DIRECTOR_BOT_PROVIDER` | auto → `mock` | Brain provider |
+| `DIRECTOR_BOT_PROVIDER` | auto → `mock` | `mock` / `anthropic` / `openai` / `xai` |
+| `DIRECTOR_BOT_TEXT_MODEL` | provider default | Model id |
 
 ## Related tools
 
 | Repo | Role |
 |------|------|
-| [scripty](https://github.com/CourtReinland/scripty) | Label films → shots/scripts → **export-canon** |
+| [scripty](https://github.com/CourtReinland/scripty) | Label films → **export-canon** |
 | [lightwriter](https://github.com/CourtReinland/lightwriter) | Pages & scene cards |
-| [script2screen](https://github.com/CourtReinland/script2screen) | Realize timeline in Resolve |
-| [opensouls](https://github.com/opensouls/opensouls) | Inspiration for WorkingMemory / MentalProcesses |
+| [script2screen](https://github.com/CourtReinland/script2screen) | Resolve timeline realization |
+| [opensouls](https://github.com/opensouls/opensouls) | Inspiration (WorkingMemory / processes) |
 
 ## Tests
 
 ```bash
-source .venv/bin/activate
 python -m pytest -q
 ```
 
@@ -101,4 +106,4 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Status
 
-v0.1.0 — monorepo scaffold: contracts, canon DB, soul, decision engine, adapters, Scripty export pipe. Next: richer corpus curation UI, vector retrieval, live LLM brain, tighter LightWriter/STS file contracts as those tools stabilize.
+**v0.2.0** — hybrid retrieval, live brain seam, curation CLI, project cards/series, vertical-slice `short` pipeline, multi-genre seed corpus, handoff export.

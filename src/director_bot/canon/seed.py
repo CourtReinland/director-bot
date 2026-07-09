@@ -235,12 +235,249 @@ SEED_BUNDLES: list[dict] = [
             },
         ],
     },
+    {
+        "work": {
+            "slug": "heist-elevator",
+            "title": "Heist Elevator (synthetic S-tier)",
+            "year": 2001,
+            "directors": ["Steven Soderbergh"],
+            "genres": ["heist", "crime", "thriller"],
+            "medium": "short",
+            "tier": "S",
+            "theme": "Competence as romance; time as the antagonist",
+            "logline": "Three thieves share an elevator ride that is also a clock.",
+            "plot_summary": (
+                "Cross-cut fragments and cool color blocks turn a simple "
+                "elevator beat into a temporal puzzle."
+            ),
+            "source": "seed:hand-labeled",
+        },
+        "scene_cards": [
+            {
+                "idx": 0,
+                "slugline": "INT. HOTEL ELEVATOR - DAY",
+                "title": "Three strangers",
+                "what_happens": (
+                    "THREE THIEVES stand in an elevator, pretending not to know "
+                    "each other. Floors tick. A suitcase between feet."
+                ),
+                "relationship_delta": "Team bonded by silence and timing.",
+                "plot_function": "Plant the crew's discipline before the score.",
+                "emotional_spine": "Cool tension.",
+                "characters": ["THIEF A", "THIEF B", "THIEF C"],
+                "structural_beat": "Fun and Games",
+                "act": 2,
+                "tags": ["elevator", "crew", "time pressure"],
+            },
+        ],
+        "shot_moments": [
+            {
+                "idx": 0,
+                "scene_idx": 0,
+                "scale": "INSERT",
+                "subject": "FLOOR NUMBERS",
+                "angle": "EYE LEVEL",
+                "move": "STATIC",
+                "int_ext": "INT.",
+                "location": "HOTEL ELEVATOR",
+                "time_of_day": "DAY",
+                "action_text": "Digital floor counter climbs. Cut on change.",
+                "characters": [],
+                "mood": "graphic, cool teal",
+                "dialogue": [],
+            },
+            {
+                "idx": 1,
+                "scene_idx": 0,
+                "scale": "CU",
+                "subject": "SUITCASE HANDLE",
+                "angle": "HIGH ANGLE",
+                "move": "STATIC",
+                "int_ext": "INT.",
+                "location": "HOTEL ELEVATOR",
+                "time_of_day": "DAY",
+                "action_text": "Knuckles white on the handle; ring camera glint.",
+                "characters": ["THIEF B"],
+                "mood": "detail as character",
+                "dialogue": [],
+            },
+        ],
+        "decision_digests": [
+            {
+                "scene_idx": 0,
+                "shot_idx": 0,
+                "situation": "Need to make waiting feel like a countdown without score.",
+                "decision": "Insert floor counter; cut on number change; no faces yet.",
+                "rationale": "Time becomes the antagonist before dialogue admits it.",
+                "director": "Steven Soderbergh",
+                "tags": ["insert", "time", "graphic"],
+                "phase": "shotlist",
+            },
+        ],
+    },
+    {
+        "work": {
+            "slug": "comedy-button",
+            "title": "Comedy Button (synthetic A-tier)",
+            "year": 2014,
+            "directors": ["Edgar Wright"],
+            "genres": ["comedy", "action"],
+            "medium": "short",
+            "tier": "A",
+            "theme": "Rhythm is character",
+            "logline": "A hero prepares to leave the apartment; every object gets a smash-cut button.",
+            "plot_summary": "Match-cut comedy build through prop punctuation.",
+            "source": "seed:hand-labeled",
+        },
+        "scene_cards": [
+            {
+                "idx": 0,
+                "slugline": "INT. FLAT - DAY",
+                "title": "Get ready",
+                "what_happens": (
+                    "HERO grabs keys, jacket, sunglasses in rhythmic smash cuts. "
+                    "Door slam is the button."
+                ),
+                "relationship_delta": "Hero vs their own OCD competence.",
+                "plot_function": "Establish visual grammar of the comedy.",
+                "emotional_spine": "Caffeinated confidence.",
+                "characters": ["HERO"],
+                "structural_beat": "Set-Up",
+                "act": 1,
+                "tags": ["smash cut", "prop rhythm", "button"],
+            },
+        ],
+        "shot_moments": [
+            {
+                "idx": 0,
+                "scene_idx": 0,
+                "scale": "CU",
+                "subject": "KEYS",
+                "angle": "EYE LEVEL",
+                "move": "STATIC",
+                "int_ext": "INT.",
+                "location": "FLAT",
+                "time_of_day": "DAY",
+                "action_text": "Keys snatch from bowl — smash cut.",
+                "characters": ["HERO"],
+                "mood": "punchy, high contrast",
+                "dialogue": [],
+            },
+            {
+                "idx": 1,
+                "scene_idx": 0,
+                "scale": "MS",
+                "subject": "DOOR SLAM",
+                "angle": "EYE LEVEL",
+                "move": "STATIC",
+                "int_ext": "INT.",
+                "location": "FLAT",
+                "time_of_day": "DAY",
+                "action_text": "Door fills frame and SLAMS — cut to black beat.",
+                "characters": ["HERO"],
+                "mood": "comic period",
+                "dialogue": [],
+            },
+        ],
+        "decision_digests": [
+            {
+                "scene_idx": 0,
+                "shot_idx": 1,
+                "situation": "Comedy exit; need a hard button not a fade.",
+                "decision": "MS door slam as period; smash-cut rhythm on props before it.",
+                "rationale": "Comedy is cutting; the door is the punchline.",
+                "director": "Edgar Wright",
+                "tags": ["smash cut", "button", "prop"],
+                "phase": "shotlist",
+            },
+        ],
+    },
+    {
+        "work": {
+            "slug": "horror-threshold",
+            "title": "Horror Threshold (synthetic S-tier)",
+            "year": 2018,
+            "directors": ["Ari Aster"],
+            "genres": ["horror", "drama"],
+            "medium": "short",
+            "tier": "S",
+            "theme": "Dread lives in architecture and delayed reveal",
+            "logline": "A character opens a door they should not; the frame refuses to enter first.",
+            "plot_summary": "Sound and negative space deliver horror before the monster.",
+            "source": "seed:hand-labeled",
+        },
+        "scene_cards": [
+            {
+                "idx": 0,
+                "slugline": "INT. BASEMENT STAIR - NIGHT",
+                "title": "Don't",
+                "what_happens": (
+                    "THEY stand at the top of the stairs. Light switch fails. "
+                    "Something shifts below. They still go down."
+                ),
+                "relationship_delta": "Curiosity overrules self-preservation.",
+                "plot_function": "Commit to the nightmare.",
+                "emotional_spine": "Slow dread.",
+                "characters": ["THEY"],
+                "structural_beat": "Break into Two",
+                "act": 1,
+                "tags": ["stairs", "threshold", "sound design"],
+            },
+        ],
+        "shot_moments": [
+            {
+                "idx": 0,
+                "scene_idx": 0,
+                "scale": "WS",
+                "subject": "STAIRWELL",
+                "angle": "HIGH ANGLE",
+                "move": "STATIC",
+                "int_ext": "INT.",
+                "location": "BASEMENT STAIR",
+                "time_of_day": "NIGHT",
+                "action_text": "Hold wide; subject small at top. Darkness below.",
+                "characters": ["THEY"],
+                "mood": "architectural dread",
+                "dialogue": [],
+            },
+            {
+                "idx": 1,
+                "scene_idx": 0,
+                "scale": "POV",
+                "subject": "DESCENDING",
+                "angle": "HIGH ANGLE",
+                "move": "TRACKING",
+                "int_ext": "INT.",
+                "location": "BASEMENT STAIR",
+                "time_of_day": "NIGHT",
+                "action_text": "Slow track down with footsteps; withhold the landing.",
+                "characters": ["THEY"],
+                "mood": "subjective dread",
+                "dialogue": [],
+            },
+        ],
+        "decision_digests": [
+            {
+                "scene_idx": 0,
+                "shot_idx": 0,
+                "situation": "Horror entry; audience wants the scare early.",
+                "decision": "Wide hold of architecture first; delay the reveal and the reverse.",
+                "rationale": "Dread is spatial. Let the house be the antagonist.",
+                "director": "Ari Aster",
+                "tags": ["wide hold", "architecture", "delay"],
+                "phase": "shotlist",
+            },
+        ],
+    },
 ]
 
 
 def seed_demo_canon(db: CanonDB) -> list[int]:
-    """Load SEED_BUNDLES; returns work ids."""
+    """Load SEED_BUNDLES; returns work ids. Rebuilds embedding index."""
+    from director_bot.canon.index import reindex
+
     ids: list[int] = []
     for bundle in SEED_BUNDLES:
         ids.append(import_work_bundle(db, bundle, replace_children=True))
+    reindex(db)
     return ids
