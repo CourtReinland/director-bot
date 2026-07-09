@@ -1,0 +1,58 @@
+{
+  "work": {
+    "slug": "example-threshold",
+    "title": "Example: The Threshold",
+    "year": 2020,
+    "directors": ["Example Director"],
+    "genres": ["drama"],
+    "medium": "short",
+    "tier": "A",
+    "theme": "Leaving is harder than arriving",
+    "logline": "A character pauses at a doorway and almost turns back.",
+    "plot_summary": "Single-scene study of hesitation at a threshold."
+  },
+  "scene_cards": [
+    {
+      "idx": 0,
+      "slugline": "INT. APARTMENT DOOR - DAY",
+      "title": "The pause",
+      "what_happens": "THEY put a hand on the knob. Wait. Open. Leave.",
+      "relationship_delta": "Self vs past self.",
+      "plot_function": "Point of no return.",
+      "emotional_spine": "Quiet resolve.",
+      "characters": ["THEY"],
+      "structural_beat": "Break into Two",
+      "act": 1,
+      "tags": ["doorway", "hesitation"]
+    }
+  ],
+  "shot_moments": [
+    {
+      "idx": 0,
+      "scene_idx": 0,
+      "scale": "MS",
+      "subject": "HAND ON KNOB",
+      "angle": "EYE LEVEL",
+      "move": "STATIC",
+      "int_ext": "INT.",
+      "location": "APARTMENT DOOR",
+      "time_of_day": "DAY",
+      "action_text": "Hand rests on the knob. Knuckles whiten. Release. Grip again.",
+      "characters": ["THEY"],
+      "mood": "still, natural light",
+      "dialogue": []
+    }
+  ],
+  "decision_digests": [
+    {
+      "scene_idx": 0,
+      "shot_idx": 0,
+      "situation": "Character about to leave a life stage; words would cheapen it.",
+      "decision": "MS on hand on knob; no face reverse; no score.",
+      "rationale": "Body decides before face admits it.",
+      "director": "Example Director",
+      "tags": ["insert-as-MS", "silence"],
+      "phase": "shotlist"
+    }
+  ]
+}
