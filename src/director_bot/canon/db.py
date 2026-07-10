@@ -189,6 +189,20 @@ CREATE TABLE IF NOT EXISTS motif_beats (
     meta TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS brain_traces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    ts TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'complete',
+    brain TEXT NOT NULL DEFAULT '',
+    project_id INTEGER,
+    system TEXT NOT NULL DEFAULT '',
+    user_text TEXT NOT NULL DEFAULT '',
+    response TEXT NOT NULL DEFAULT '',
+    stats TEXT NOT NULL DEFAULT '{}',
+    meta TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_scene_cards_work ON scene_cards(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_work ON shot_moments(work_id, idx);
 CREATE INDEX IF NOT EXISTS idx_shot_moments_scene ON shot_moments(scene_card_id);
@@ -200,6 +214,9 @@ CREATE INDEX IF NOT EXISTS idx_project_cards ON project_cards(project_id, idx);
 CREATE INDEX IF NOT EXISTS idx_episodes_series ON episodes(series_project_id, number);
 CREATE INDEX IF NOT EXISTS idx_motifs_series ON motifs(series_project_id);
 CREATE INDEX IF NOT EXISTS idx_motif_beats ON motif_beats(motif_id, episode_number);
+CREATE INDEX IF NOT EXISTS idx_brain_traces_ts ON brain_traces(ts);
+CREATE INDEX IF NOT EXISTS idx_brain_traces_project ON brain_traces(project_id, id);
+CREATE INDEX IF NOT EXISTS idx_brain_traces_kind ON brain_traces(kind);
 """
 
 _JSON_COLS = {
@@ -215,6 +232,7 @@ _JSON_COLS = {
     "episodes": {"meta"},
     "motifs": {"tags", "meta"},
     "motif_beats": {"meta"},
+    "brain_traces": {"stats", "meta"},
 }
 
 
@@ -674,6 +692,159 @@ class CanonDB:
             ).fetchone()
         return self._decode("decisions", row)
 
+    # -- brain traces (durable training log) -------------------------------- #
+
+    def insert_brain_trace(self, data: dict[str, Any]) -> int:
+        """Persist a model-facing complete()/stream call. Returns row id."""
+        row = {
+            "public_id": data.get("public_id") or data.get("id") or "",
+            "ts": data.get("ts") or _now(),
+            "kind": data.get("kind") or "complete",
+            "brain": data.get("brain") or "",
+            "project_id": data.get("project_id"),
+            "system": data.get("system") or "",
+            "user_text": data.get("user") or data.get("user_text") or "",
+            "response": data.get("response") or "",
+            "stats": data.get("stats") or {},
+            "meta": data.get("meta") or {},
+        }
+        if not row["public_id"]:
+            raise ValueError("brain_trace requires public_id")
+        enc = self._encode("brain_traces", row)
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT OR REPLACE INTO brain_traces
+                   (public_id, ts, kind, brain, project_id, system, user_text,
+                    response, stats, meta)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    enc["public_id"], enc["ts"], enc["kind"], enc["brain"],
+                    enc["project_id"], enc["system"], enc["user_text"],
+                    enc["response"], enc["stats"], enc["meta"],
+                ),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid)
+
+    def _brain_trace_filters(
+        self,
+        *,
+        project_id: Optional[int] = None,
+        kind: Optional[str] = None,
+        q: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        brain: Optional[str] = None,
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if project_id is not None:
+            clauses.append("project_id = ?")
+            params.append(project_id)
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        if brain:
+            clauses.append("brain = ?")
+            params.append(brain)
+        if since:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if until:
+            clauses.append("ts <= ?")
+            params.append(until)
+        if q and q.strip():
+            like = f"%{q.strip()}%"
+            clauses.append(
+                "(system LIKE ? OR user_text LIKE ? OR response LIKE ? OR kind LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        return where, params
+
+    def list_brain_traces(
+        self,
+        *,
+        n: int = 40,
+        project_id: Optional[int] = None,
+        kind: Optional[str] = None,
+        q: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        brain: Optional[str] = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        where, params = self._brain_trace_filters(
+            project_id=project_id, kind=kind, q=q,
+            since=since, until=until, brain=brain,
+        )
+        sql = (
+            f"SELECT * FROM brain_traces{where} ORDER BY id DESC LIMIT ? OFFSET ?"
+        )
+        params = list(params) + [
+            max(1, min(int(n), 500)),
+            max(0, int(offset)),
+        ]
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        out = []
+        for row in self._decode_many("brain_traces", rows):
+            out.append(self._brain_trace_public(row))
+        return out
+
+    def count_brain_traces(
+        self,
+        *,
+        project_id: Optional[int] = None,
+        kind: Optional[str] = None,
+        q: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        brain: Optional[str] = None,
+    ) -> int:
+        where, params = self._brain_trace_filters(
+            project_id=project_id, kind=kind, q=q,
+            since=since, until=until, brain=brain,
+        )
+        sql = f"SELECT COUNT(*) FROM brain_traces{where}"
+        with self._lock:
+            return int(self._conn.execute(sql, params).fetchone()[0])
+
+    def get_brain_trace(self, trace_id: str | int) -> Optional[dict]:
+        with self._lock:
+            if isinstance(trace_id, int) or (
+                isinstance(trace_id, str) and trace_id.isdigit()
+            ):
+                row = self._conn.execute(
+                    "SELECT * FROM brain_traces WHERE id = ?",
+                    (int(trace_id),),
+                ).fetchone()
+            else:
+                row = self._conn.execute(
+                    "SELECT * FROM brain_traces WHERE public_id = ?",
+                    (str(trace_id),),
+                ).fetchone()
+        decoded = self._decode("brain_traces", row)
+        return self._brain_trace_public(decoded) if decoded else None
+
+    @staticmethod
+    def _brain_trace_public(row: dict) -> dict:
+        """Normalize DB row to API shape (user not user_text)."""
+        return {
+            "id": row.get("public_id") or str(row.get("id")),
+            "db_id": row.get("id"),
+            "ts": row.get("ts"),
+            "kind": row.get("kind"),
+            "brain": row.get("brain"),
+            "project_id": row.get("project_id"),
+            "system": row.get("system") or "",
+            "user": row.get("user_text") or "",
+            "response": row.get("response") or "",
+            "stats": row.get("stats") or {},
+            "meta": row.get("meta") or {},
+            "persisted": True,
+        }
+
     def update_work(self, work_id: int, **fields: Any) -> None:
         allowed = {
             "title", "year", "directors", "genres", "medium", "tier",
@@ -809,6 +980,47 @@ class CanonDB:
                 (project_id,),
             ).fetchall()
         return self._decode_many("project_cards", rows)
+
+    def get_project_card(self, card_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM project_cards WHERE id = ?", (card_id,)
+            ).fetchone()
+        return self._decode("project_cards", row)
+
+    def update_project_card(self, card_id: int, **fields: Any) -> Optional[dict]:
+        """Patch a live board card. Returns updated row or None if missing."""
+        allowed = {
+            "idx", "slugline", "title", "what_happens", "relationship_delta",
+            "plot_function", "emotional_spine", "characters", "structural_beat",
+            "act", "page_estimate", "tags", "meta",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return self.get_project_card(card_id)
+        enc = self._encode("project_cards", updates)
+        sets = ", ".join(f"{k}=?" for k in enc)
+        vals = list(enc.values()) + [card_id]
+        with self._lock:
+            cur = self._conn.execute(
+                f"UPDATE project_cards SET {sets} WHERE id = ?", vals
+            )
+            self._conn.commit()
+            if cur.rowcount == 0:
+                return None
+        self.emit("project_card_updated", {"id": card_id, **updates})
+        return self.get_project_card(card_id)
+
+    def delete_project_card(self, card_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM project_cards WHERE id = ?", (card_id,)
+            )
+            self._conn.commit()
+            ok = cur.rowcount > 0
+        if ok:
+            self.emit("project_card_deleted", {"id": card_id})
+        return ok
 
     def clear_project_cards(self, project_id: int) -> None:
         with self._lock:

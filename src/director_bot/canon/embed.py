@@ -179,6 +179,26 @@ def _select_provider() -> str:
     return "auto"
 
 
+def _auto_embed_provider() -> str:
+    """Pick embedder when DIRECTOR_BOT_EMBED_PROVIDER is auto/unset.
+
+    Dual-key policy (training-friendly retrieval):
+    - OPENAI_API_KEY present → OpenAI embeddings (even if chat is xAI)
+    - else XAI_API_KEY + DIRECTOR_BOT_EMBED_TRY_XAI=1 → experimental xAI
+    - else hash (offline)
+
+    This lets you run `DIRECTOR_BOT_PROVIDER=xai` for Grok chat while using
+    OpenAI `text-embedding-3-small` for hybrid canon lookup.
+    """
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if os.environ.get("XAI_API_KEY"):
+        prefer = os.environ.get("DIRECTOR_BOT_EMBED_TRY_XAI", "").lower()
+        if prefer in ("1", "true", "yes"):
+            return "xai"
+    return "hash"
+
+
 def get_embedder(provider: Optional[str] = None, *, force_reload: bool = False) -> Embedder:
     """Return process-wide embedder (cached)."""
     global _EMBEDDER
@@ -193,14 +213,7 @@ def get_embedder(provider: Optional[str] = None, *, force_reload: bool = False) 
 
     name = (provider or _select_provider()).lower()
     if name == "auto":
-        if os.environ.get("OPENAI_API_KEY"):
-            name = "openai"
-        elif os.environ.get("XAI_API_KEY"):
-            # Prefer hash until xAI public embeddings are reliable; allow override.
-            prefer = os.environ.get("DIRECTOR_BOT_EMBED_TRY_XAI", "").lower()
-            name = "xai" if prefer in ("1", "true", "yes") else "hash"
-        else:
-            name = "hash"
+        name = _auto_embed_provider()
 
     if name == "openai":
         key = os.environ.get("OPENAI_API_KEY", "")

@@ -1,0 +1,46 @@
+{
+  "name": "director-bot-desktop",
+  "productName": "Director-bot",
+  "version": "0.6.0",
+  "description": "Desktop shell for Director-bot — embodied AI film director.",
+  "author": "Director-bot",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "pack": "electron-builder --mac dir",
+    "dist": "electron-builder --mac dmg",
+    "dist:standalone": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "app.directorbot.desktop",
+    "productName": "Director-bot",
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../packaging/dist/director-bot-backend",
+        "to": "backend/director-bot-backend"
+      }
+    ],
+    "afterPack": "build/afterpack-sign.js",
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.video",
+      "identity": null,
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}

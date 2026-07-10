@@ -173,21 +173,30 @@ def plan_episode_spine(
         })
     plan["suggested_cards"] = cards
 
-    b = brain or get_brain()
+    b = brain or get_brain(project_id=series_project_id)
+    if hasattr(b, "with_context"):
+        b = b.with_context(kind="arc", project_id=series_project_id)
+    system = (
+        "You are a showrunner planning one episode of a series. "
+        "Be concrete. Return short prose (not JSON): 1) A-plot, 2) motif moves, "
+        "3) cold open idea, 4) button."
+    )
+    user = (
+        f"Series: {report['series']}\n"
+        f"Episode #{episode_number} title={plan['episode_title']}\n"
+        f"Hint: {plan['logline_hint']}\n"
+        f"Must payoff: {due_payoffs}\n"
+        f"Develop: {active[:4]}\n"
+        f"Plant budget: {plant_slots}\n"
+    )
+    plan["model_view"] = {
+        "kind": "arc",
+        "system": system,
+        "user": user,
+        "brain": b.name,
+        "would_call_llm": b.name != "mock",
+    }
     if b.name != "mock":
-        system = (
-            "You are a showrunner planning one episode of a series. "
-            "Be concrete. Return short prose (not JSON): 1) A-plot, 2) motif moves, "
-            "3) cold open idea, 4) button."
-        )
-        user = (
-            f"Series: {report['series']}\n"
-            f"Episode #{episode_number} title={plan['episode_title']}\n"
-            f"Hint: {plan['logline_hint']}\n"
-            f"Must payoff: {due_payoffs}\n"
-            f"Develop: {active[:4]}\n"
-            f"Plant budget: {plant_slots}\n"
-        )
         try:
             plan["brain_notes"] = b.complete(system, user)
         except Exception as exc:
@@ -198,6 +207,7 @@ def plan_episode_spine(
             f"develop {min(2, len(active))}, plant up to {plant_slots}. "
             "Cut on emotion; track open loops."
         )
+
 
     # Persist arc notes on the episode row if it exists
     if ep is not None:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "director-bot"
-version = "0.3.0"
+version = "0.6.0"
 description = "Embodied AI film director: canon DB, soul, decision ledger, tool orchestration"
 requires-python = ">=3.11"
 dependencies = [

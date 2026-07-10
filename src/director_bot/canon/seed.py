@@ -472,15 +472,26 @@ SEED_BUNDLES: list[dict] = [
 ]
 
 
-def seed_demo_canon(db: CanonDB, *, include_extra: bool = True) -> list[int]:
-    """Load SEED_BUNDLES (+ extras); returns work ids. Rebuilds embedding index."""
+def seed_demo_canon(
+    db: CanonDB,
+    *,
+    include_extra: bool = True,
+    include_scale: bool = True,
+) -> list[int]:
+    """Load SEED_BUNDLES (+ extras + scale pockets); returns work ids.
+
+    Rebuilds embedding index once at the end.
+    """
     from director_bot.canon.index import reindex
     from director_bot.canon.seed_extra import EXTRA_BUNDLES
+    from director_bot.canon.seed_scale import SCALE_BUNDLES
 
     ids: list[int] = []
     bundles = list(SEED_BUNDLES)
     if include_extra:
         bundles.extend(EXTRA_BUNDLES)
+    if include_scale:
+        bundles.extend(SCALE_BUNDLES)
     for bundle in bundles:
         ids.append(import_work_bundle(
             db, bundle, replace_children=True, reindex_after=False,

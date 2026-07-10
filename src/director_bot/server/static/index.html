@@ -7,88 +7,341 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <h1>Director-bot</h1>
-    <p class="sub" id="health">loading…</p>
-  </header>
-
-  <nav>
-    <button data-tab="projects" class="active">Projects</button>
-    <button data-tab="canon">Canon</button>
-    <button data-tab="decide">Decide</button>
-    <button data-tab="arc">Series Arc</button>
-  </nav>
-
-  <main>
-    <section id="tab-projects" class="tab active">
-      <div class="row">
-        <div class="col">
-          <h2>Projects</h2>
-          <ul id="project-list" class="list"></ul>
-        </div>
-        <div class="col wide">
-          <h2 id="project-title">Select a project</h2>
-          <div id="project-meta" class="muted"></div>
-          <h3>Board</h3>
-          <div id="cards" class="cards"></div>
-          <h3>Decision chain</h3>
-          <div id="chain-status" class="muted"></div>
-          <ol id="decisions" class="list"></ol>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand">
+        <div class="mark">D</div>
+        <div>
+          <div class="brand-name">Director-bot</div>
+          <div class="brand-sub" id="health">loading…</div>
         </div>
       </div>
-    </section>
-
-    <section id="tab-canon" class="tab">
-      <h2>Canon lookup</h2>
-      <div class="toolbar">
-        <input id="lookup-q" type="search" placeholder="situation: interrogation silence…" />
-        <select id="lookup-kind">
-          <option value="digest">digests</option>
-          <option value="moment">moments</option>
-          <option value="card">cards</option>
-        </select>
-        <button id="lookup-btn">Search</button>
+      <nav id="nav">
+        <button data-tab="model" class="active">
+          <span class="nav-label">Model View</span>
+          <span class="nav-hint">what the model sees</span>
+        </button>
+        <button data-tab="projects">
+          <span class="nav-label">Projects</span>
+          <span class="nav-hint">board · chain · memory</span>
+        </button>
+        <button data-tab="canon">
+          <span class="nav-label">Canon</span>
+          <span class="nav-hint">retrieval · works</span>
+        </button>
+        <button data-tab="decide">
+          <span class="nav-label">Decide</span>
+          <span class="nav-hint">commit · glass box</span>
+        </button>
+        <button data-tab="arc">
+          <span class="nav-label">Series Arc</span>
+          <span class="nav-hint">motifs · plan</span>
+        </button>
+        <button data-tab="soul">
+          <span class="nav-label">Soul</span>
+          <span class="nav-hint">static personality</span>
+        </button>
+      </nav>
+      <div class="rail-foot">
+        <div class="pill" id="provider-pill">brain · —</div>
+        <div class="pill muted" id="path-pill">home · —</div>
       </div>
-      <ul id="lookup-results" class="list"></ul>
-      <h3>Works</h3>
-      <ul id="works-list" class="list"></ul>
-    </section>
+    </aside>
 
-    <section id="tab-decide" class="tab">
-      <h2>Run decision</h2>
-      <label>Project id (optional) <input id="decide-project" type="number" min="1" /></label>
-      <label>Genre <input id="decide-genre" type="text" placeholder="thriller" /></label>
-      <label>Phase
-        <select id="decide-phase">
-          <option>shotlist</option>
-          <option>break_story</option>
-          <option>write</option>
-          <option>previs</option>
-          <option>dailies</option>
-          <option>cut</option>
-          <option>series_arc</option>
-          <option>intake</option>
-        </select>
-      </label>
-      <label>Situation
-        <textarea id="decide-summary" rows="4" placeholder="What is the director facing?"></textarea>
-      </label>
-      <button id="decide-btn">Decide & commit</button>
-      <pre id="decide-out" class="out"></pre>
-    </section>
+    <main>
+      <!-- ========== MODEL VIEW (training core) ========== -->
+      <section id="tab-model" class="tab active">
+        <header class="page-head">
+          <div>
+            <h1>Model View</h1>
+            <p class="lede">
+              Exact system + user messages the brain receives. Dry-run previews
+              never spend tokens; live meet records every call in the trace ring.
+            </p>
+          </div>
+          <div class="stats-row" id="mv-stats"></div>
+        </header>
 
-    <section id="tab-arc" class="tab">
-      <h2>Series arc</h2>
-      <div class="toolbar">
-        <label>Series project id <input id="arc-series" type="number" min="1" /></label>
-        <button id="arc-load">Load arc</button>
-        <label>Episode # <input id="arc-ep" type="number" min="1" value="1" /></label>
-        <button id="arc-plan">Plan episode</button>
-      </div>
-      <pre id="arc-out" class="out"></pre>
-    </section>
-  </main>
+        <div class="panel controls">
+          <div class="field-row">
+            <label>Mode
+              <select id="mv-mode">
+                <option value="meet">Meet (soul speak)</option>
+                <option value="decide">Decide (retrieve + score)</option>
+              </select>
+            </label>
+            <label>Project
+              <select id="mv-project"><option value="">— none —</option></select>
+            </label>
+            <label>Phase
+              <select id="mv-phase">
+                <option>intake</option>
+                <option>break_story</option>
+                <option>write</option>
+                <option selected>shotlist</option>
+                <option>previs</option>
+                <option>dailies</option>
+                <option>cut</option>
+                <option>series_arc</option>
+              </select>
+            </label>
+            <label class="grow">Situation / message
+              <input id="mv-topic" type="text"
+                placeholder="Interrogation: silence, closed file, power without dialogue…" />
+            </label>
+          </div>
+          <div class="btn-row">
+            <button id="mv-preview" class="primary">Preview context</button>
+            <button id="mv-live" class="ghost">Stream meet</button>
+            <button id="mv-live-sync" class="ghost">Meet (no stream)</button>
+            <button id="mv-refresh-traces" class="ghost">Refresh traces</button>
+          </div>
+        </div>
 
+        <div class="split-3">
+          <div class="pane">
+            <div class="pane-head">
+              <h3>System</h3>
+              <span class="tag" id="sys-tag">soul preamble</span>
+            </div>
+            <pre id="mv-system" class="code block">Select Preview context…</pre>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <h3>User</h3>
+              <span class="tag" id="user-tag">assembled prompt</span>
+            </div>
+            <pre id="mv-user" class="code block">—</pre>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <h3>Response / payload</h3>
+              <span class="tag" id="resp-tag">live or dry-run</span>
+            </div>
+            <pre id="mv-response" class="code block">—</pre>
+            <div id="stream-status" class="stream-status" hidden></div>
+          </div>
+        </div>
+
+        <div class="split-2 mt">
+          <div class="pane">
+            <div class="pane-head">
+              <h3>Retrieval / sections</h3>
+              <span class="tag">canon hits · memory</span>
+            </div>
+            <div id="mv-sections" class="scroll-panel muted-empty">Preview a decide or meet to inspect retrieval and soul sections.</div>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <h3>Brain traces</h3>
+              <span class="tag" id="trace-count">0</span>
+            </div>
+            <div class="trace-filters">
+              <input id="trace-q" type="search" placeholder="Search system / user / response…" />
+              <select id="trace-kind">
+                <option value="">all kinds</option>
+                <option value="meet">meet</option>
+                <option value="score">score</option>
+                <option value="arc">arc</option>
+                <option value="complete">complete</option>
+              </select>
+              <input id="trace-since" type="text" placeholder="since ISO (optional)" />
+              <button id="trace-search" class="ghost" type="button">Filter</button>
+            </div>
+            <ul id="mv-traces" class="trace-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== PROJECTS ========== -->
+      <section id="tab-projects" class="tab">
+        <header class="page-head">
+          <div>
+            <h1>Projects</h1>
+            <p class="lede">Board cards, merkle decision chain, working memory as the model reads it.</p>
+          </div>
+        </header>
+        <div class="split-sidebar">
+          <div class="pane slim">
+            <div class="pane-head"><h3>All projects</h3></div>
+            <ul id="project-list" class="list"></ul>
+          </div>
+          <div class="stack">
+            <div class="pane">
+              <div class="pane-head">
+                <h3 id="project-title">Select a project</h3>
+                <span class="tag" id="chain-status">—</span>
+              </div>
+              <p id="project-meta" class="meta"></p>
+              <div class="pane-head board-head">
+                <h3>Board</h3>
+                <button id="card-add" class="ghost" type="button">+ Card</button>
+              </div>
+              <div id="cards" class="cards"></div>
+              <div id="card-editor" class="card-editor" hidden>
+                <h4 class="subh" id="card-editor-title">Edit card</h4>
+                <input type="hidden" id="card-edit-id" />
+                <div class="form-grid">
+                  <label>Slugline <input id="card-slugline" type="text" /></label>
+                  <label>Title <input id="card-title" type="text" /></label>
+                  <label class="full">What happens
+                    <textarea id="card-what" rows="3"></textarea>
+                  </label>
+                  <label>Beat <input id="card-beat" type="text" placeholder="Catalyst" /></label>
+                  <label>Act <input id="card-act" type="number" min="1" max="5" /></label>
+                  <label class="full">Emotional spine <input id="card-spine" type="text" /></label>
+                  <label class="full">Tags (comma) <input id="card-tags" type="text" /></label>
+                </div>
+                <div class="btn-row" style="padding:0 0.9rem 0.9rem">
+                  <button id="card-save" class="primary" type="button">Save card</button>
+                  <button id="card-cancel" class="ghost" type="button">Cancel</button>
+                  <button id="card-delete" class="ghost bad-btn" type="button">Delete</button>
+                </div>
+              </div>
+            </div>
+            <div class="split-2">
+              <div class="pane">
+                <div class="pane-head"><h3>Working memory</h3><span class="tag">format_for_prompt</span></div>
+                <pre id="wm-text" class="code block sm">—</pre>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><h3>Decision chain</h3></div>
+                <ol id="decisions" class="list numbered"></ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== CANON ========== -->
+      <section id="tab-canon" class="tab">
+        <header class="page-head">
+          <div>
+            <h1>Canon</h1>
+            <p class="lede">Hybrid retrieval surface — digests, moments, and cards the director pulls as evidence.</p>
+          </div>
+        </header>
+        <div class="panel controls">
+          <div class="field-row">
+            <label class="grow">Query
+              <input id="lookup-q" type="search" placeholder="situation: interrogation silence reverse…" />
+            </label>
+            <label>Kind
+              <select id="lookup-kind">
+                <option value="digest">digests</option>
+                <option value="moment">moments</option>
+                <option value="card">cards</option>
+              </select>
+            </label>
+            <button id="lookup-btn" class="primary">Search</button>
+          </div>
+        </div>
+        <div class="split-2">
+          <div class="pane">
+            <div class="pane-head"><h3>Hits</h3></div>
+            <ul id="lookup-results" class="list"></ul>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><h3>Works</h3></div>
+            <ul id="works-list" class="list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== DECIDE ========== -->
+      <section id="tab-decide" class="tab">
+        <header class="page-head">
+          <div>
+            <h1>Decide</h1>
+            <p class="lede">Run equilibrium, commit to the merkle ledger, inspect every candidate and score prompt.</p>
+          </div>
+        </header>
+        <div class="split-2">
+          <div class="pane">
+            <div class="form-grid">
+              <label>Project id <input id="decide-project" type="number" min="1" /></label>
+              <label>Genre <input id="decide-genre" type="text" placeholder="thriller" /></label>
+              <label>Phase
+                <select id="decide-phase">
+                  <option>shotlist</option>
+                  <option>break_story</option>
+                  <option>write</option>
+                  <option>previs</option>
+                  <option>dailies</option>
+                  <option>cut</option>
+                  <option>series_arc</option>
+                  <option>intake</option>
+                </select>
+              </label>
+              <label>Style refs <input id="decide-style" type="text" placeholder="David Fincher" /></label>
+              <label class="full">Situation
+                <textarea id="decide-summary" rows="5" placeholder="What is the director facing?"></textarea>
+              </label>
+            </div>
+            <div class="btn-row">
+              <button id="decide-preview" class="ghost">Preview only</button>
+              <button id="decide-btn" class="primary">Decide &amp; commit</button>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><h3>Result glass box</h3></div>
+            <div id="decide-glass" class="scroll-panel">Run a decision to see candidates, equilibrium, and the score prompt the model would receive.</div>
+          </div>
+        </div>
+        <div class="pane mt">
+          <div class="pane-head"><h3>Raw JSON</h3></div>
+          <pre id="decide-out" class="code block sm">—</pre>
+        </div>
+      </section>
+
+      <!-- ========== ARC ========== -->
+      <section id="tab-arc" class="tab">
+        <header class="page-head">
+          <div>
+            <h1>Series Arc</h1>
+            <p class="lede">Motifs, plants/payoffs, episode spine — with model_view on plan calls.</p>
+          </div>
+        </header>
+        <div class="panel controls">
+          <div class="field-row">
+            <label>Series project id <input id="arc-series" type="number" min="1" /></label>
+            <button id="arc-load" class="ghost">Load arc</button>
+            <label>Episode # <input id="arc-ep" type="number" min="1" value="1" /></label>
+            <button id="arc-plan" class="primary">Plan episode</button>
+          </div>
+        </div>
+        <pre id="arc-out" class="code block">—</pre>
+      </section>
+
+      <!-- ========== SOUL ========== -->
+      <section id="tab-soul" class="tab">
+        <header class="page-head">
+          <div>
+            <h1>Soul files</h1>
+            <p class="lede">Static personality loaded into every meet system preamble. Edit markdown under <code>soul/static/</code>.</p>
+          </div>
+        </header>
+        <div class="split-3">
+          <div class="pane">
+            <div class="pane-head"><h3>core.md</h3></div>
+            <pre id="soul-core" class="code block">—</pre>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><h3>taste.md</h3></div>
+            <pre id="soul-taste" class="code block">—</pre>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><h3>process_notes.md</h3></div>
+            <pre id="soul-process" class="code block">—</pre>
+          </div>
+        </div>
+        <div class="pane mt">
+          <div class="pane-head"><h3>Assembled system preamble</h3><span class="tag" id="soul-stats">—</span></div>
+          <pre id="soul-preamble" class="code block">—</pre>
+        </div>
+      </section>
+    </main>
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>

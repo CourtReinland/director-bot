@@ -1,24 +1,57 @@
-# Director-bot Architecture (v0.2)
+# Director-bot Architecture (v0.4)
 
-Embodied AI film director: **canon** + **soul** + **decisions** + **adapters** + **project workspace**.
+Embodied AI film director: **canon** + **soul** + **decisions** + **adapters** + **project workspace** + **model view**.
 
 ## Layout
 
 ```
 director-bot/
 ├── soul/static/                 # hot-editable personality
+├── desktop/                     # Electron shell (Scripty-style)
 ├── src/director_bot/
 │   ├── contracts/               # shared schemas
 │   ├── canon/                   # SQLite corpus, hybrid query, embed, seed
-│   ├── soul/                    # WorkingMemory, processes, brain providers
+│   ├── soul/                    # WorkingMemory, processes, brain, trace
 │   ├── decisions/               # equilibrium + merkle ledger + decide()
 │   ├── project/                 # cards, series, handoffs
 │   ├── adapters/                # scripty / lightwriter / script2screen
+│   ├── server/                  # FastAPI + static dashboard
 │   ├── pipeline.py              # vertical-slice short orchestration
 │   ├── config.py
 │   └── cli.py
 └── tests/
 ```
+
+## Model View (training regimen)
+
+Every brain `complete(system, user)` is wrapped by `TracingBrain` and logged to a process-local ring (`soul/trace.py`). The dashboard **Model View** pane shows:
+
+| Surface | Meet | Decide |
+|---------|------|--------|
+| System | soul preamble (`core`+`taste`+`process_notes`) | craft scorer system |
+| User | process + working memory + topic | JSON score payload |
+| Side | memory sections | retrieval digests/moments + candidates |
+| Traces | live ring `/api/brain/traces` | same |
+
+Dry-run: `POST /api/model-view/meet|decide` assembles context without calling the LLM.
+Live: `POST /api/soul/meet` returns system/user/response; `POST /api/decide` embeds `model_view`.
+
+### Streaming meet (SSE)
+
+`POST /api/soul/meet/stream` yields Server-Sent Events:
+
+```
+event: meta   → full model view (system, user, sections; response empty)
+event: token  → {"t": "<delta>"}  (many)
+event: done   → full model view with final response + updated memory
+event: error  → {"message", "partial", ...}
+```
+
+Brains implement optional `stream(system, user) -> Iterator[str]`. Mock chunks deterministically; OpenAI-compat and Anthropic use native streams.
+
+### Durable traces
+
+`brain_traces` SQLite table (dual-written from `BrainTraceStore` when a DB is bound by the server/CLI). List via `GET /api/brain/traces` (`source: sqlite`). Process ring remains a hot cache.
 
 ## Data flow
 

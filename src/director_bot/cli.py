@@ -27,7 +27,11 @@ app.add_typer(soul_app, name="soul")
 
 
 def _db() -> CanonDB:
-    return CanonDB(config.db_path())
+    from director_bot.soul.trace import get_trace_store
+
+    db = CanonDB(config.db_path())
+    get_trace_store().bind_db(db)
+    return db
 
 
 def _fail(msg: str) -> typer.Exit:
@@ -790,16 +794,24 @@ def doctor() -> None:
     typer.echo(f"provider={config.default_provider()}")
     db = _db()
     n_emb = len(db.embeddings_of_type("digest")) + len(db.embeddings_of_type("moment"))
-    from director_bot.canon.embed import get_embedder
+    from director_bot.canon.embed import get_embedder, _auto_embed_provider
     emb = get_embedder()
     typer.echo(
         f"works={len(db.list_works())} projects={len(db.list_projects())} "
-        f"embedding_rows≈{n_emb} embedder={emb.name}"
+        f"embedding_rows≈{n_emb} embedder={emb.name} "
+        f"auto_embed={_auto_embed_provider()}"
     )
     # Show which key names are present without values
-    keys = [k for k in ("XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-                        "DIRECTOR_BOT_PROVIDER") if __import__("os").environ.get(k)]
+    keys = [k for k in (
+        "XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+        "DIRECTOR_BOT_PROVIDER", "DIRECTOR_BOT_EMBED_PROVIDER",
+    ) if __import__("os").environ.get(k)]
     typer.echo(f"env_keys_present={keys}")
+    if __import__("os").environ.get("XAI_API_KEY") and __import__("os").environ.get("OPENAI_API_KEY"):
+        typer.echo(
+            "dual_key: chat can use xai while embed auto-selects openai "
+            "(set DIRECTOR_BOT_EMBED_PROVIDER=hash to force offline)"
+        )
 
 
 def main() -> None:

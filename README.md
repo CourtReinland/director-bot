@@ -27,6 +27,26 @@ director-bot soul meet "pitch me a cold open" --project 1
 director-bot canon lookup "interrogation silence withhold reverse"
 ```
 
+### Desktop app (macOS)
+
+Persistent Electron shell — same pattern as Scripty. Spawns the backend and opens the dashboard in a native window:
+
+```bash
+cd desktop && npm install && npm start
+# headless check:
+npm run smoke   # → SMOKE OK
+```
+
+See [`docs/BUILD.md`](docs/BUILD.md). Data stays in `~/.director-bot` (shared with CLI).
+
+### Model View (training)
+
+The dashboard opens on **Model View**: the exact system + user messages the brain receives, plus retrieval hits, candidates, score payloads, and a **durable brain_traces** log (SQLite).
+
+- **Preview context** — dry-run, no tokens  
+- **Stream meet** — SSE tokens as they arrive (`POST /api/soul/meet/stream`)  
+- **Traces** — click any past call (survives app restarts)  
+
 ## CLI map
 
 | Command | Purpose |
@@ -91,6 +111,8 @@ xAI does not currently ship a stable public embeddings route; default embedder s
 | `DIRECTOR_BOT_SOUL_DIR` | repo `soul/static` | Personality markdown |
 | `DIRECTOR_BOT_PROVIDER` | auto → `mock` | `mock` / `anthropic` / `openai` / `xai` |
 | `DIRECTOR_BOT_TEXT_MODEL` | provider default | Model id |
+| `DIRECTOR_BOT_EMBED_PROVIDER` | `auto` | `hash` / `openai` / `xai` / `auto` |
+| *(auto embed)* | — | If `OPENAI_API_KEY` set → OpenAI embeddings even when chat is xAI |
 
 ## Related tools
 
@@ -113,4 +135,4 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Status
 
-**v0.3.0** — `.env` loader, embedder providers, FastAPI dashboard, series arc/motifs, expanded seed corpus, v2 handoffs, agreement metrics, human overrides.
+**v0.6.0** — dual embed (XAI chat + OpenAI embed), inline board edit, trace search, 50+ seed pockets, packaging/DMG scripts; plus stream meet + durable traces.

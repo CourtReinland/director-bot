@@ -1,6 +1,7 @@
 """End-to-end decide(): retrieve canon → propose → equilibrate → commit."""
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 from director_bot.canon.db import CanonDB
@@ -241,9 +242,17 @@ def decide(
         best_hist = max(historical, key=lambda c: score_candidate(c.scores, w))
         pool.append(blend_creativity(best_hist, creative, alpha, weights=w))
 
-    active_brain = brain or get_brain()
+    active_brain = brain or get_brain(project_id=project_id)
+    if hasattr(active_brain, "with_context"):
+        active_brain = active_brain.with_context(  # type: ignore[assignment]
+            kind="score",
+            project_id=project_id,
+            phase=phase,
+        )
+    brain_scored = False
     if use_brain_scores and active_brain.name != "mock":
         pool = _apply_brain_scores(pool, active_brain, situation_blob)
+        brain_scored = True
 
     chosen, report = pick_equilibrium(pool, weights=w)
     report["brain"] = active_brain.name
@@ -262,6 +271,20 @@ def decide(
             scores=report,
         )
 
+    from director_bot.soul.trace import (
+        SCORE_SYSTEM,
+        build_score_payload,
+        serialize_candidate,
+        _char_stats,
+    )
+
+    score_payload = build_score_payload(
+        situation_blob,
+        [{"id": c.id, "action": c.action, "style_source": c.style_source}
+         for c in pool],
+    )
+    score_user = json.dumps(score_payload, indent=2)
+
     return {
         "phase": phase,
         "situation": situation_blob,
@@ -271,4 +294,26 @@ def decide(
         "equilibrium": report,
         "decision": record,
         "brain": active_brain.name,
+        "brain_scored": brain_scored,
+        "model_view": {
+            "kind": "decide",
+            "live": True,
+            "brain": active_brain.name,
+            "brain_scored": brain_scored,
+            "situation_blob": situation_blob,
+            "candidates": [serialize_candidate(c) for c in pool],
+            "chosen": serialize_candidate(chosen),
+            "equilibrium": report,
+            "score_prompt": {
+                "system": SCORE_SYSTEM,
+                "user": score_user,
+                "stats": _char_stats(SCORE_SYSTEM, score_user),
+                "sent": brain_scored,
+                "note": (
+                    "Scorer prompt is only POSTed when provider != mock. "
+                    "Mock path uses deterministic criterion scores."
+                ),
+            },
+        },
     }
+

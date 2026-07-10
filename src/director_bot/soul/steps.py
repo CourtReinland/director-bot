@@ -72,21 +72,125 @@ class DirectorMind:
     def perceive(self, text: str) -> None:
         self.memory.append("perception", text)
 
-    def speak_about(self, topic: str) -> str:
-        system = self.soul.system_preamble()
+    def meet_prompt(self, topic: str) -> dict[str, str]:
+        """Exact system/user messages that would be sent to the brain."""
+        from director_bot.soul.trace import build_meet_prompt
+
         process = self.process.process
-        user = (
-            f"Current mental process: {process.name}\n"
-            f"Process guidance: {process.blurb}\n\n"
-            f"Working memory:\n{self.memory.format_for_prompt()}\n\n"
-            f"Human / situation:\n{topic}\n\n"
-            "Respond in character as the director. Be decisive. "
-            "Cite craft principles. Do not skip process."
+        return build_meet_prompt(
+            system=self.soul.system_preamble(),
+            process_name=process.name,
+            process_blurb=process.blurb,
+            memory_text=self.memory.format_for_prompt(),
+            topic=topic,
         )
-        reply = self.brain.complete(system, user)
+
+    def speak_about(self, topic: str) -> str:
+        prompts = self.meet_prompt(topic)
+        brain = self.brain
+        if hasattr(brain, "with_context"):
+            brain = brain.with_context(  # type: ignore[assignment]
+                kind="meet",
+                project_id=self.project_id,
+                phase=self.process.phase,
+            )
+        reply = brain.complete(prompts["system"], prompts["user"])
         self.memory.append("speech", reply)
         self.persist_memory()
         return reply
+
+    def _meet_view_base(self, topic: str, prompts: dict[str, str]) -> dict[str, Any]:
+        from director_bot.soul.trace import _char_stats
+
+        process = self.process.process
+        return {
+            "kind": "meet",
+            "live": True,
+            "brain": getattr(self.brain, "name", "unknown"),
+            "project_id": self.project_id,
+            "phase": self.process.phase,
+            "system": prompts["system"],
+            "user": prompts["user"],
+            "stats": _char_stats(prompts["system"], prompts["user"]),
+            "sections": {
+                "soul_name": self.soul.name,
+                "soul_core": self.soul.core,
+                "soul_taste": self.soul.taste,
+                "soul_process_notes": self.soul.process_notes,
+                "process_name": process.name,
+                "process_blurb": process.blurb,
+                "working_memory": self.memory.to_list(),
+                "working_memory_text": self.memory.format_for_prompt(),
+                "topic": topic,
+            },
+        }
+
+    def _context_brain(self) -> Any:
+        brain = self.brain
+        if hasattr(brain, "with_context"):
+            return brain.with_context(  # type: ignore[return-value]
+                kind="meet",
+                project_id=self.project_id,
+                phase=self.process.phase,
+            )
+        return brain
+
+    def speak_about_traced(self, topic: str) -> dict[str, Any]:
+        """Meet + return full model view (system/user/response) for training."""
+        prompts = self.meet_prompt(topic)
+        brain = self._context_brain()
+        reply = brain.complete(prompts["system"], prompts["user"])
+        self.memory.append("speech", reply)
+        self.persist_memory()
+        view = self._meet_view_base(topic, prompts)
+        view["brain"] = getattr(brain, "name", "unknown")
+        view["response"] = reply
+        view["streamed"] = False
+        return view
+
+    def speak_about_stream(self, topic: str):
+        """Yield SSE-friendly event dicts: meta → token* → done|error.
+
+        Records the full response via TracingBrain.stream when available.
+        """
+        from director_bot.soul.brain import stream_text
+
+        prompts = self.meet_prompt(topic)
+        brain = self._context_brain()
+        base = self._meet_view_base(topic, prompts)
+        base["brain"] = getattr(brain, "name", "unknown")
+        base["streamed"] = True
+        base["response"] = ""
+        yield {"event": "meta", "data": base}
+
+        parts: list[str] = []
+        try:
+            for delta in stream_text(brain, prompts["system"], prompts["user"]):
+                parts.append(delta)
+                yield {"event": "token", "data": {"t": delta}}
+            reply = "".join(parts)
+            self.memory.append("speech", reply)
+            self.persist_memory()
+            done = dict(base)
+            done["response"] = reply
+            done["sections"] = {
+                **base["sections"],
+                "working_memory": self.memory.to_list(),
+                "working_memory_text": self.memory.format_for_prompt(),
+            }
+            yield {"event": "done", "data": done}
+        except Exception as exc:
+            yield {
+                "event": "error",
+                "data": {
+                    "message": str(exc),
+                    "partial": "".join(parts),
+                    "system": prompts["system"],
+                    "user": prompts["user"],
+                },
+            }
+
+
 
 
 def run_cognitive_cycle(

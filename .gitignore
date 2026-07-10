@@ -15,3 +15,9 @@ build/
 .env
 .coverage
 htmlcov/
+desktop/node_modules/
+desktop/dist/
+desktop/build/icon.png
+packaging/dist/
+packaging/build/
+packaging/*.spec

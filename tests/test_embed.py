@@ -29,3 +29,20 @@ def test_force_hash_embedder(monkeypatch):
     assert isinstance(emb, HashEmbedder)
     assert emb.name == "hash"
     reset_embedder()
+
+
+def test_dual_key_auto_prefers_openai_embed(monkeypatch):
+    """XAI chat + OPENAI key → openai embeddings under auto."""
+    from director_bot.canon.embed import _auto_embed_provider
+
+    monkeypatch.setenv("XAI_API_KEY", "xai-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("DIRECTOR_BOT_EMBED_PROVIDER", raising=False)
+    assert _auto_embed_provider() == "openai"
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert _auto_embed_provider() == "hash"
+
+    monkeypatch.setenv("XAI_API_KEY", "xai-test")
+    monkeypatch.setenv("DIRECTOR_BOT_EMBED_TRY_XAI", "1")
+    assert _auto_embed_provider() == "xai"
